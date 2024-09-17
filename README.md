@@ -1,3 +1,20 @@
+
+# Project Title
+
+Scribe
+
+This is a notes app with various features
+
+
+## Tech Stack
+
+**Client:** React,JSX,JavaScript,CSS
+
+**Server:** Django
+
+**Database:** SQLlite
+
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
