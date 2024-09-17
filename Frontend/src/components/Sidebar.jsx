@@ -1,24 +1,28 @@
-import React, { useEffect } from "react"
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
-export default function Sidebar(){
-const [notes,setNotes] = React.useState([])
+export default function Sidebar({ notes }) {
+  const navigate = useNavigate();
 
-useEffect(()=>{
-    fetch("http://127.0.0.1:8000/api/frontpage")
-    .then(response => response.json())
-    .then(notes => {
-        setNotes(notes)
-    })
-},[])
+  const handleNoteClick = (id) => {
+    navigate(`/edit-note/${id}`);
+  };
 
-    return(
-    <div className="sidebar">
-      <h2>Notes</h2>
+  return (
+    <div className="sidebar p-4 h-full overflow-y-auto">
+      <button onClick={() => navigate('/edit-note')}>+ New Note</button>
+      <h2 className="text-2xl font-bold mb-4">Your Notes</h2>
+      <ul className="space-y-4">
         {notes.map(note => (
-          <div key={note.id}>
-            <h3>{note.title}</h3>
-          </div>
+          <li
+            key={note.id}
+            className="shadow-md rounded-lg p-4 border border-gray-200 cursor-pointer"
+            onClick={() => handleNoteClick(note.id)}
+          >
+            <h3 className="text-xl font-bold">{note.title || 'Untitled'}</h3>
+          </li>
         ))}
+      </ul>
     </div>
-    )
+  );
 }

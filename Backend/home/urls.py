@@ -19,6 +19,8 @@ from django.urls import path,include
 from home import views
 
 urlpatterns = [
-    path('api/frontpage', views.frontpage, name = "api_frontpage"),
-    path('save-note/', views.save_note, name='save_note'),
+    path('api/sidebar/', views.sidebar, name = "sidebar"),
+    path('api/save-note/', views.save_note, name='save_note'),
+    path('api/get-note/<int:id>/', views.get_note, name='get_note'),
+    path('api/delete-note/<int:id>/', views.delete_note, name='delete_note'),
 ]
