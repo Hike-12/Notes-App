@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Editor } from '@tinymce/tinymce-react';
+import { useLocation } from 'react-router-dom';
 
 // Utility functions
 const extractTitle = (htmlContent) => {
@@ -21,6 +22,7 @@ const removeTitleFromContent = (htmlContent) => {
 };
 
 export default function TextEditor() {
+  const location = useLocation();
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -29,16 +31,23 @@ export default function TextEditor() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [foundNote, setFoundNote] = useState(null);
+  
 
   useEffect(() => {
     setLoading(true);
     setError(null);
 
-    if (id) {
-      // Fetching note data from the server
-      fetch(`http://localhost:8000/api/get-note/${id}`)
-        .then(response => response.json())
-        .then(data => {
+    const fetchData = async () => {
+      if (id) {
+        try {
+          const response = await fetch(`http://localhost:8000/api/get-note/${id}/`); // Ensure the URL is correct with trailing slash
+          
+          if (!response.ok) {
+            throw new Error('Network response was not ok');
+          }
+
+          const data = await response.json();
+
           if (data) {
             setContent(data.body || ''); 
             setFoundNote(data); // Save the found note for later use
@@ -46,18 +55,21 @@ export default function TextEditor() {
           } else {
             setError('Note not found');
           }
-        })
-        .catch(error => {
+        } catch (error) {
           setError('There was an error fetching the note!');
           console.error('Error:', error);
-        });
-    } else {
-      // Creating a new note
-      setContent('');
-      setIsNewNote(true);
-    }
+        } finally {
+          setLoading(false); // Move setLoading here
+        }
+      } else {
+        // Creating a new note
+        setContent('');
+        setIsNewNote(true);
+        setLoading(false); // Ensure loading is set to false here too
+      }
+    };
 
-    setLoading(false);
+    fetchData();
   }, [id]);
   
   const handleEditorChange = (newContent) => {
@@ -65,7 +77,6 @@ export default function TextEditor() {
   };
   
   const handleDelete = () => {
-    window.location.reload();
     if (!foundNote || isNewNote) {
       console.warn('No note to delete or it is a new note.');
       return;
@@ -76,7 +87,8 @@ export default function TextEditor() {
     })
       .then(response => {
         if (response.ok) {
-          navigate('/'); // Redirect to the home page
+          navigate('/');// Redirect to the home page
+          window.location.reload(); 
         } else {
           console.error('Error deleting note');
         }
@@ -107,7 +119,8 @@ export default function TextEditor() {
       .then(response => response.json())
       .then(data => {
         if (isNewNote) {
-          navigate(`/edit-note/${data.id}`);
+          navigate(`/edit-note/${data.id}`, { replace: true });
+          window.location.reload();
         } else {
           console.log('Content saved:', data);
         }
@@ -127,28 +140,28 @@ export default function TextEditor() {
 
   return (
     <div className="h-full">
+      {loading && <div>Loading...</div>}
+      {error && <div>{error}</div>}
+      
       <Editor
         apiKey='ie2xb0cij28mccrbosdqgruuuovzukrhwjy3c4hsm964jz5y'
         init={{
           plugins: 'link image code',
           toolbar: 'undo redo | formatselect | bold italic | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | removeformat',
-          setup: function(editor){
-            editor.on('init', function() {
-              editor.setContent('<p class="placeholder">Enter Note Title</p><p>Enter Content here</p>');
-            });
-          }
+          menubar: false,
         }}
         value={content}
         onEditorChange={handleEditorChange}
       />
-
+  
       <button onClick={handleSave} className="mt-4 bg-blue-500 text-white py-2 px-4 rounded">
         Save
       </button>
       {!isNewNote && (
-        <button onClick={handleDelete} className="mt-4 bg-red-500 text-white py-2 px-4 rounded">
+        <button onClick={handleDelete} className="mx-3 mt-4 bg-red-500 text-white py-2 px-4 rounded">
           Delete
-        </button>)}
+        </button>
+      )}
     </div>
   );
 }
