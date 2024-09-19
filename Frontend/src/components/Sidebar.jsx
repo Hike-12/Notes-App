@@ -21,7 +21,7 @@ export default function Sidebar({ notes }) {
         {notes.map(note => (
           <li
             key={note.id}
-            className="shadow-md rounded-lg p-4 border border-gray-200 cursor-pointer"
+            className="shadow-md rounded-lg p-4 border border-gray-200 cursor-pointer hover:bg-blue-300 transition duration-200"
             onClick={() => handleNoteClick(note.id)}
           >
             <h3 className="text-xl font-bold">{note.title || 'Untitled'}</h3>
