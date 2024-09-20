@@ -1,7 +1,7 @@
 
 # Project Title
 
-Scribe
+Notes App
 
 This is a notes app with various features
 
@@ -14,6 +14,11 @@ This is a notes app with various features
 
 **Database:** SQLlite
 
+## Features
+1.Add Notes
+2.Delete Notes
+3.Edit notes
+4.Rich Text Editor to help you format the notes with different syles (bold, italic, underlined, alignment and much more).
 
 # React + Vite
 
