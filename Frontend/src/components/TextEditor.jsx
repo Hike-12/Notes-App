@@ -36,12 +36,10 @@ export default function TextEditor() {
   useEffect(() => {
     setLoading(true);
     setError(null);
-
     const fetchData = async () => {
       if (id) {
         try {
-          const response = await fetch(`http://localhost:8000/api/get-note/${id}/`); // Ensure the URL is correct with trailing slash
-          
+          const response = await fetch(`http://localhost:8000/api/get-note/${id}/`);          
           if (!response.ok) {
             throw new Error('Network response was not ok');
           }
