@@ -74,7 +74,7 @@ export default function TextEditor({ setSidebarOpen }) {
     const fetchData = async () => {
       if (id) {
         try {
-          const response = await fetch(`http://localhost:8000/api/get-note/${id}/`, {
+          const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/get-note/${id}/`, {
             credentials: 'include'
           });          
           
@@ -168,7 +168,7 @@ export default function TextEditor({ setSidebarOpen }) {
     }
 
     if (window.confirm('Are you sure you want to delete this note? This action cannot be undone.')) {
-      fetch(`http://localhost:8000/api/delete-note/${foundNote.id}/`, {
+      fetch(`${import.meta.env.VITE_API_BASE_URL}/api/delete-note/${foundNote.id}/`, {
         method: 'DELETE',
         credentials: 'include'
       })
@@ -198,7 +198,7 @@ export default function TextEditor({ setSidebarOpen }) {
     const contentWithoutTitle = removeTitleFromContent(content);
     const fullContent = `<p>${title}</p>${contentWithoutTitle}`;
 
-    fetch('http://localhost:8000/api/save-note/', {
+    fetch(`${import.meta.env.VITE_API_BASE_URL}/api/save-note/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -240,7 +240,7 @@ export default function TextEditor({ setSidebarOpen }) {
   const handleShareUpdate = () => {
     // Refresh note data to get updated shares
     if (id) {
-      fetch(`http://localhost:8000/api/get-note/${id}/`, {
+      fetch(`${import.meta.env.VITE_API_BASE_URL}/api/get-note/${id}/`, {
         credentials: 'include'
       })
         .then(response => response.json())

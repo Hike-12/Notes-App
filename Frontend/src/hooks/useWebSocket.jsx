@@ -9,7 +9,7 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
     if (!noteId) return;
 
     // Create WebSocket connection
-    const wsUrl = `ws://localhost:8000/ws/note/${noteId}/`;
+    const wsUrl = `ws://${import.meta.env.VITE_API_BASE_URL}/ws/note/${noteId}/`;
     ws.current = new WebSocket(wsUrl);
 
     ws.current.onopen = () => {

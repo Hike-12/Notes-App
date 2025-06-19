@@ -17,7 +17,7 @@ export default function ShareModal({ isOpen, onClose, note, onShareUpdate }) {
 
       setLoading(true);
       try {
-        const response = await fetch(`http://localhost:8000/api/auth/search-users/?q=${encodeURIComponent(searchTerm)}`, {
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/auth/search-users/?q=${encodeURIComponent(searchTerm)}`, {
           credentials: 'include'
         });
         const data = await response.json();
@@ -42,7 +42,7 @@ export default function ShareModal({ isOpen, onClose, note, onShareUpdate }) {
   const handleShare = async (user) => {
     setShareLoading(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/share-note/${note.id}/`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/share-note/${note.id}/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,7 +75,7 @@ export default function ShareModal({ isOpen, onClose, note, onShareUpdate }) {
     if (!confirm('Are you sure you want to revoke access?')) return;
 
     try {
-      const response = await fetch(`http://localhost:8000/api/revoke-share/${note.id}/${shareId}/`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/revoke-share/${note.id}/${shareId}/`, {
         method: 'DELETE',
         credentials: 'include'
       });

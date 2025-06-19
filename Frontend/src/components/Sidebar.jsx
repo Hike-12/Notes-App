@@ -9,7 +9,7 @@ export default function Sidebar({ notes, setSidebarOpen }) {
   useEffect(() => {
     const fetchNotes = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/sidebar/', {
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/sidebar/`, {
           credentials: 'include'
         });
         
