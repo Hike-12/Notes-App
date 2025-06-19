@@ -403,7 +403,7 @@ export default function TextEditor({ setSidebarOpen }) {
               >
                 {isSaving ? (
                   <>
-                    <div className="animate-spin rounded-full h-3 h-3 sm:h-4 sm:w-4 border-b-2 border-white mr-1 sm:mr-2"></div>
+                    <div className="animate-spin rounded-full h-3 sm:h-4 sm:w-4 border-b-2 border-white mr-1 sm:mr-2"></div>
                     <span className="hidden sm:inline">Saving...</span>
                     <span className="sm:hidden">Save</span>
                   </>
@@ -440,7 +440,7 @@ export default function TextEditor({ setSidebarOpen }) {
         <div className="h-full bg-white/40 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 overflow-hidden">
           <div className="h-full p-3 sm:p-6">
             <Editor
-              apiKey='ie2xb0cij28mccrbosdqgruuuovzukrhwjy3c4hsm964jz5y'
+              apiKey={import.meta.env.VITE_TINYMCE_API_KEY}
               onInit={(evt, editor) => {
                 editorRef.current = editor;
                 // Add cursor change listener
