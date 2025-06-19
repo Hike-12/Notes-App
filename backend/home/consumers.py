@@ -10,7 +10,7 @@ from urllib.parse import parse_qs
 class NoteConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.note_id = self.scope['url_route']['kwargs']['note_id']
-        self.room_group_name = f'note_{self.note_id}'
+        self.room_group_name = f'note_{self.note_id}'  # Use room_group_name consistently
         
         # Get user ID from query parameters
         query_string = self.scope.get('query_string', b'').decode()
@@ -50,6 +50,19 @@ class NoteConsumer(AsyncWebsocketConsumer):
             self.channel_name
         )
 
+        # Add user as collaborator
+        await self.add_collaborator()
+        
+        # Send updated collaborators list
+        collaborators = await self.get_collaborators()
+        await self.channel_layer.group_send(
+            self.room_group_name,  # Use room_group_name consistently
+            {
+                'type': 'collaborators_update',
+                'collaborators': collaborators
+            }
+        )
+
         await self.accept()
         print(f"WebSocket connected: User {user.username} to note {self.note_id}")
 
@@ -75,7 +88,7 @@ class NoteConsumer(AsyncWebsocketConsumer):
         # Send updated collaborators list
         collaborators = await self.get_collaborators()
         await self.channel_layer.group_send(
-            self.note_group_name,
+            self.room_group_name,  # FIXED: was note_group_name
             {
                 'type': 'collaborators_update',
                 'collaborators': collaborators
@@ -84,7 +97,7 @@ class NoteConsumer(AsyncWebsocketConsumer):
         
         # Leave note group
         await self.channel_layer.group_discard(
-            self.note_group_name,
+            self.room_group_name,  # FIXED: was note_group_name
             self.channel_name
         )
 
@@ -95,7 +108,7 @@ class NoteConsumer(AsyncWebsocketConsumer):
         if message_type == 'content_change':
             # Broadcast content change to all users in the note
             await self.channel_layer.group_send(
-                self.note_group_name,
+                self.room_group_name,  # FIXED: was note_group_name
                 {
                     'type': 'content_update',
                     'content': data['content'],
@@ -106,7 +119,7 @@ class NoteConsumer(AsyncWebsocketConsumer):
         elif message_type == 'cursor_position':
             # Broadcast cursor position
             await self.channel_layer.group_send(
-                self.note_group_name,
+                self.room_group_name,  # FIXED: was note_group_name
                 {
                     'type': 'cursor_update',
                     'position': data['position'],
@@ -157,8 +170,8 @@ class NoteConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def add_collaborator(self):
-        session_id = self.scope.get('session', {}).get('session_key', 'anonymous')
-        user_id = f"user_{session_id}_{self.channel_name[-8:]}"
+        # Use the authenticated user instead of session-based ID
+        user_id = f"user_{self.user.id}"
         
         # Generate random color for user
         colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F']
@@ -169,12 +182,14 @@ class NoteConsumer(AsyncWebsocketConsumer):
             user_identifier=user_id,
             defaults={
                 'is_active': True,
-                'user_name': f'User{user_id[-4:]}',
+                'user_name': self.user.username,  # Use actual username
                 'color': color
             }
         )
         collaborator.is_active = True
+        collaborator.user_name = self.user.username  # Update username in case it changed
         collaborator.save()
+        
         return {
             'user_identifier': collaborator.user_identifier,
             'user_name': collaborator.user_name,
@@ -183,8 +198,7 @@ class NoteConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def remove_collaborator(self):
-        session_id = self.scope.get('session', {}).get('session_key', 'anonymous')
-        user_id = f"user_{session_id}_{self.channel_name[-8:]}"
+        user_id = f"user_{self.user.id}"
         
         try:
             collaborator = Collaborator.objects.get(

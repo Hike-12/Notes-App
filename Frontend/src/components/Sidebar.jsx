@@ -61,10 +61,7 @@ export default function Sidebar({ notes, setSidebarOpen }) {
       <div className="p-4 sm:p-6 border-b border-[#8A784E]/20">
         <div className="flex items-center justify-between mb-4 sm:mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-[#3B3B1A] flex items-center">
-            <svg className="w-6 h-6 sm:w-8 sm:h-8 mr-2 sm:mr-3 text-[#8A784E]" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
-              <path fillRule="evenodd" d="M4 5a2 2 0 012-2v1a2 2 0 00-2 2v6a2 2 0 002 2h8a2 2 0 002-2V6a2 2 0 00-2-2V3a2 2 0 012-2v1a3 3 0 013 3v6a3 3 0 01-3 3H6a3 3 0 01-3-3V5z" clipRule="evenodd" />
-            </svg>
+            <img src="/logo.png" alt="Scribe Logo" className="w-8 h-8 sm:w-10 sm:h-10 mr-2" />
             Scribe
           </h1>
           
