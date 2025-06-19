@@ -2,7 +2,7 @@ import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import User
-from .models import Note, Collaborator
+from .models import Note, Collaborator, NoteShare
 from urllib.parse import parse_qs
 import random
 
@@ -32,7 +32,7 @@ class NoteConsumer(AsyncWebsocketConsumer):
             self.user = user
             print(f"✅ WebSocket User found: {user.username} (ID: {user.id})")
             
-            # Get note with all related data using proper async methods
+            # Get note and check permissions
             note_data = await self.get_note_with_details(self.note_id)
             if not note_data:
                 print(f"❌ Note {self.note_id} not found")
@@ -42,16 +42,16 @@ class NoteConsumer(AsyncWebsocketConsumer):
             print(f"✅ Note found: '{note_data['title']}' (ID: {note_data['id']})")
             print(f"📝 Note owner: {note_data['owner_username']} (ID: {note_data['owner_id']})")
             
-            # Check permissions
+            # Check if user is owner
             is_owner = note_data['owner_id'] == user.id
-            shared_user_ids = note_data['shared_user_ids']
-            is_shared = user.id in shared_user_ids
-            
             print(f"👑 Is owner: {is_owner}")
-            print(f"👥 Shared with user IDs: {shared_user_ids}")
-            print(f"🔗 User '{user.username}' in shared list: {is_shared}")
             
-            has_access = is_owner or is_shared
+            # Check if user has shared access
+            has_shared_access = await self.check_shared_access(self.note_id, user.id)
+            print(f"🔗 Has shared access: {has_shared_access}")
+            
+            # Final access decision
+            has_access = is_owner or has_shared_access
             print(f"🔒 Final access decision: {has_access}")
             
             if not has_access:
@@ -93,18 +93,36 @@ class NoteConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_note_with_details(self, note_id):
-        """Get note with all related data in one async call"""
+        """Get note with basic details in one async call"""
         try:
-            note = Note.objects.select_related('owner').prefetch_related('shared_with').get(id=note_id)
+            note = Note.objects.select_related('owner').get(id=note_id)
             return {
                 'id': note.id,
                 'title': note.title,
                 'owner_id': note.owner.id,
                 'owner_username': note.owner.username,
-                'shared_user_ids': list(note.shared_with.values_list('id', flat=True))
             }
         except Note.DoesNotExist:
             return None
+
+    @database_sync_to_async
+    def check_shared_access(self, note_id, user_id):
+        """Check if user has shared access to the note using NoteShare model"""
+        try:
+            # Check both many-to-many relationship and NoteShare model
+            note = Note.objects.get(id=note_id)
+            
+            # Check direct many-to-many relationship
+            if note.shared_with.filter(id=user_id).exists():
+                return True
+            
+            # Check NoteShare model
+            if NoteShare.objects.filter(note_id=note_id, shared_with_id=user_id).exists():
+                return True
+                
+            return False
+        except Note.DoesNotExist:
+            return False
 
     async def disconnect(self, close_code):
         print(f"🔌 WebSocket DISCONNECTING: User {getattr(self, 'user', 'Unknown')} from note {self.note_id} (code: {close_code})")
@@ -196,11 +214,15 @@ class NoteConsumer(AsyncWebsocketConsumer):
             defaults={
                 'is_active': True,
                 'user_name': self.user.username,
-                'color': color
+                'color': color,
+                'user': self.user  # Link to actual user
             }
         )
+        
+        # Update collaborator info
         collaborator.is_active = True
         collaborator.user_name = self.user.username
+        collaborator.user = self.user
         collaborator.save()
         
         return {
