@@ -50,6 +50,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -58,7 +59,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
 ]
 
@@ -165,14 +165,17 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# Session settings
-SESSION_COOKIE_AGE = 86400  # 24 hours
-SESSION_SAVE_EVERY_REQUEST = True
-SESSION_COOKIE_SECURE = not DEBUG  # Use secure cookies in production
+SESSION_COOKIE_SECURE = not DEBUG  
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'  # Allow cross-origin cookies
+SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'  
 CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
+SESSION_COOKIE_AGE = 86400  # 24 hours
+
+# Add these additional settings
+SESSION_COOKIE_DOMAIN = None  # Allow cross-domain cookies
+CSRF_COOKIE_HTTPONLY = False  # Allow JS to read CSRF token
+CSRF_USE_SESSIONS = False  # Use cookies instead of sessions for CSRF
 
 # Channels settings
 CHANNEL_LAYERS = {
