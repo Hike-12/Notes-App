@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Editor } from '@tinymce/tinymce-react';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 // Utility functions
 const extractTitle = (htmlContent) => {
@@ -23,6 +24,9 @@ const removeTitleFromContent = (htmlContent) => {
 export default function TextEditor({ setSidebarOpen }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const editorRef = useRef(null);
+  const isUpdatingFromWS = useRef(false);
+  const currentUserId = useRef(`user_${Math.random().toString(36).substr(2, 9)}`);
 
   const [content, setContent] = useState('');
   const [isNewNote, setIsNewNote] = useState(false);
@@ -31,6 +35,34 @@ export default function TextEditor({ setSidebarOpen }) {
   const [foundNote, setFoundNote] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [collaborators, setCollaborators] = useState([]);
+  const [cursors, setCursors] = useState({});
+
+  // WebSocket connection
+  const { isConnected, sendContentChange, sendCursorPosition } = useWebSocket(
+    id,
+    (newContent, userId) => {
+      if (userId !== currentUserId.current && editorRef.current) {
+        isUpdatingFromWS.current = true;
+        editorRef.current.setContent(newContent);
+        setContent(newContent);
+        setTimeout(() => {
+          isUpdatingFromWS.current = false;
+        }, 100);
+      }
+    },
+    (collaboratorsList) => {
+      setCollaborators(collaboratorsList);
+    },
+    (position, userId, userName, color) => {
+      if (userId !== currentUserId.current) {
+        setCursors(prev => ({
+          ...prev,
+          [userId]: { position, userName, color }
+        }));
+      }
+    }
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -49,6 +81,7 @@ export default function TextEditor({ setSidebarOpen }) {
             setContent(data.body || ''); 
             setFoundNote(data);
             setIsNewNote(false);
+            setCollaborators(data.collaborators || []);
           } else {
             setError('Note not found');
           }
@@ -69,7 +102,33 @@ export default function TextEditor({ setSidebarOpen }) {
   }, [id]);
   
   const handleEditorChange = (newContent) => {
-    setContent(newContent);
+    if (!isUpdatingFromWS.current) {
+      setContent(newContent);
+      // Send content change to other collaborators
+      if (id && isConnected) {
+        sendContentChange(newContent, currentUserId.current);
+      }
+    }
+  };
+
+  const handleCursorChange = (editor) => {
+    if (!isUpdatingFromWS.current && id && isConnected) {
+      const selection = editor.selection;
+      const range = selection.getRng();
+      const position = {
+        startContainer: range.startContainer,
+        startOffset: range.startOffset,
+        endContainer: range.endContainer,
+        endOffset: range.endOffset
+      };
+      
+      sendCursorPosition(
+        position, 
+        currentUserId.current, 
+        `User${currentUserId.current.slice(-4)}`,
+        '#FF6B6B'
+      );
+    }
   };
   
   const handleDelete = () => {
@@ -127,8 +186,7 @@ export default function TextEditor({ setSidebarOpen }) {
           console.log('Content saved:', data);
           setTimeout(() => {
             setShowSuccess(false);
-            window.location.reload();
-          }, 1500);
+          }, 2000);
         }
       })
       .catch(error => {
@@ -208,10 +266,40 @@ export default function TextEditor({ setSidebarOpen }) {
               </svg>
             </button>
 
-            <h1 className="text-xl sm:text-2xl font-bold text-[#3B3B1A]">
-              {isNewNote ? 'New Note' : 'Edit Note'}
-            </h1>
+            <div className="flex flex-col">
+              <h1 className="text-xl sm:text-2xl font-bold text-[#3B3B1A]">
+                {isNewNote ? 'New Note' : 'Edit Note'}
+              </h1>
+              {/* Collaboration status */}
+              <div className="flex items-center space-x-2 mt-1">
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span className="text-xs text-[#8A784E]">
+                  {isConnected ? 'Connected' : 'Disconnected'} • {collaborators.length} collaborator{collaborators.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
           </div>
+          
+          {/* Collaborators avatars */}
+          {collaborators.length > 0 && (
+            <div className="hidden sm:flex items-center space-x-2 mr-4">
+              {collaborators.slice(0, 3).map((collaborator, index) => (
+                <div
+                  key={collaborator.user_identifier}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold shadow-lg"
+                  style={{ backgroundColor: collaborator.color }}
+                  title={collaborator.user_name}
+                >
+                  {collaborator.user_name.charAt(0)}
+                </div>
+              ))}
+              {collaborators.length > 3 && (
+                <div className="w-8 h-8 rounded-full bg-[#8A784E] flex items-center justify-center text-white text-xs font-semibold shadow-lg">
+                  +{collaborators.length - 3}
+                </div>
+              )}
+            </div>
+          )}
           
           <div className="flex items-center space-x-2 sm:space-x-3">
             <button 
@@ -221,7 +309,7 @@ export default function TextEditor({ setSidebarOpen }) {
             >
               {isSaving ? (
                 <>
-                  <div className="animate-spin rounded-full h-3 sm:h-4 sm:w-4 border-b-2 border-white mr-1 sm:mr-2"></div>
+                  <div className="animate-spin rounded-full h-3 h-3 sm:h-4 sm:w-4 border-b-2 border-white mr-1 sm:mr-2"></div>
                   <span className="hidden sm:inline">Saving...</span>
                   <span className="sm:hidden">Save</span>
                 </>
@@ -257,6 +345,13 @@ export default function TextEditor({ setSidebarOpen }) {
           <div className="h-full p-3 sm:p-6">
             <Editor
               apiKey='ie2xb0cij28mccrbosdqgruuuovzukrhwjy3c4hsm964jz5y'
+              onInit={(evt, editor) => {
+                editorRef.current = editor;
+                // Add cursor change listener
+                editor.on('NodeChange', () => handleCursorChange(editor));
+                editor.on('KeyUp', () => handleCursorChange(editor));
+                editor.on('MouseUp', () => handleCursorChange(editor));
+              }}
               init={{
                 height: '100%',
                 plugins: 'link image code lists table emoticons autoresize',
@@ -281,6 +376,13 @@ export default function TextEditor({ setSidebarOpen }) {
                   }
                   p { margin-bottom: 16px; }
                   h1, h2, h3, h4, h5, h6 { color: #8A784E; margin: 20px 0 10px 0; }
+                  .collaborator-cursor {
+                    position: absolute;
+                    width: 2px;
+                    height: 20px;
+                    pointer-events: none;
+                    z-index: 1000;
+                  }
                 `,
                 statusbar: false,
                 resize: false,

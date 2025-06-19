@@ -1,17 +1,49 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Sidebar({ notes, setSidebarOpen }) {
   const navigate = useNavigate();
+  const [notesData, setNotesData] = useState([]);
+
+  // Fetch notes with collaboration info
+  useEffect(() => {
+    const fetchNotes = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/sidebar/');
+        const data = await response.json();
+        setNotesData(data);
+      } catch (error) {
+        console.error('Error fetching notes:', error);
+      }
+    };
+
+    fetchNotes();
+    // Refresh every 30 seconds to update collaboration status
+    const interval = setInterval(fetchNotes, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleNoteClick = (id) => {
     navigate(`/edit-note/${id}`);
-    if (setSidebarOpen) setSidebarOpen(false); // Close mobile sidebar
+    if (setSidebarOpen) setSidebarOpen(false);
   };
 
   const handleNewNote = () => {
     navigate('/edit-note');
-    if (setSidebarOpen) setSidebarOpen(false); // Close mobile sidebar
+    if (setSidebarOpen) setSidebarOpen(false);
+  };
+
+  const formatTimeAgo = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInMinutes = Math.floor((now - date) / (1000 * 60));
+    
+    if (diffInMinutes < 1) return 'Just now';
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    const diffInDays = Math.floor(diffInHours / 24);
+    return `${diffInDays}d ago`;
   };
 
   return (
@@ -55,12 +87,12 @@ export default function Sidebar({ notes, setSidebarOpen }) {
           <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-[#8A784E]" fill="currentColor" viewBox="0 0 20 20">
             <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z" />
           </svg>
-          Your Notes ({notes.length})
+          Your Notes ({notesData.length})
         </h2>
         
         <div className="space-y-3">
-          {notes.length > 0 ? (
-            notes.map(note => (
+          {notesData.length > 0 ? (
+            notesData.map(note => (
               <div
                 key={note.id}
                 className="bg-white/40 backdrop-blur-sm rounded-2xl p-3 sm:p-4 border border-white/20 cursor-pointer hover:bg-white/60 hover:shadow-lg transition-all duration-300 transform hover:scale-102 group"
@@ -68,12 +100,25 @@ export default function Sidebar({ notes, setSidebarOpen }) {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-base sm:text-lg font-semibold text-[#3B3B1A] group-hover:text-[#8A784E] transition-colors duration-200 line-clamp-2 break-words">
-                      {note.title || 'Untitled Note'}
-                    </h3>
-                    <p className="text-xs sm:text-sm text-[#8A784E] mt-1 opacity-70">
-                      Click to edit
-                    </p>
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="text-base sm:text-lg font-semibold text-[#3B3B1A] group-hover:text-[#8A784E] transition-colors duration-200 line-clamp-1 break-words">
+                        {note.title || 'Untitled Note'}
+                      </h3>
+                      {note.collaborators > 0 && (
+                        <div className="flex items-center space-x-1 text-xs text-[#8A784E] bg-green-100 px-2 py-1 rounded-full">
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          <span>{note.collaborators}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs sm:text-sm text-[#8A784E] opacity-70">
+                        {note.collaborators > 0 ? 'Being edited' : 'Click to edit'}
+                      </p>
+                      <span className="text-xs text-[#8A784E] opacity-50">
+                        {formatTimeAgo(note.last_modified)}
+                      </span>
+                    </div>
                   </div>
                   <svg className="w-4 h-4 sm:w-5 sm:h-5 text-[#8A784E] opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
