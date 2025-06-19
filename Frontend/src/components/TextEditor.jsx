@@ -4,7 +4,7 @@ import { Editor } from '@tinymce/tinymce-react';
 import { useWebSocket } from '../hooks/useWebSocket.jsx';
 import ShareModal from './ShareModal.jsx';
 
-// Utility functions remain the same...
+// Utility functions
 const extractTitle = (htmlContent) => {
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = htmlContent;
@@ -23,7 +23,6 @@ const removeTitleFromContent = (htmlContent) => {
 };
 
 export default function TextEditor({ setSidebarOpen }) {
-  // All your existing state and hooks remain the same...
   const { id } = useParams();
   const navigate = useNavigate();
   const editorRef = useRef(null);
@@ -44,7 +43,6 @@ export default function TextEditor({ setSidebarOpen }) {
   const [isOwner, setIsOwner] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  // All your existing WebSocket and useEffect code remains the same...
   const { isConnected, sendContentChange, sendCursorPosition } = useWebSocket(
     id,
     (newContent, userId) => {
@@ -70,7 +68,6 @@ export default function TextEditor({ setSidebarOpen }) {
     }
   );
 
-  // All your existing useEffect and handlers remain exactly the same...
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -299,7 +296,7 @@ export default function TextEditor({ setSidebarOpen }) {
       )}
 
       {/* Header - Fixed and Simple */}
-      <div className="bg-white/30 backdrop-blur-sm border-b border-white/20 p-4 flex-shrink-0">
+      <div className="bg-white/30 backdrop-blur-sm border-b border-white/20 p-4 flex-shrink-0 relative z-30">
         {/* Top row */}
         <div className="flex items-center justify-between mb-2">
           {/* Left: Menu + Title */}
@@ -330,7 +327,7 @@ export default function TextEditor({ setSidebarOpen }) {
           {/* Right: Mobile menu button */}
           <button
             onClick={() => setShowMobileMenu(!showMobileMenu)}
-            className="lg:hidden p-2 rounded-lg bg-white/40 hover:bg-white/60 transition-colors"
+            className="lg:hidden p-2 rounded-lg bg-white/40 hover:bg-white/60 transition-colors relative z-40"
           >
             <svg className="w-5 h-5 text-[#8A784E]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
@@ -388,10 +385,10 @@ export default function TextEditor({ setSidebarOpen }) {
           </div>
         </div>
 
-        {/* Mobile menu */}
+        {/* Mobile menu - FIXED Z-INDEX */}
         {showMobileMenu && (
-          <div className="lg:hidden mt-3 p-3 bg-white/50 rounded-lg space-y-3">
-            <div className="flex items-center space-x-2 text-sm text-[#8A784E]">
+          <div className="lg:hidden absolute top-full left-4 right-4 mt-2 p-3 bg-white/95 backdrop-blur-sm rounded-lg shadow-xl border border-white/30 z-50">
+            <div className="flex items-center space-x-2 text-sm text-[#8A784E] mb-3">
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
               <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
               <span>•</span>
@@ -405,7 +402,7 @@ export default function TextEditor({ setSidebarOpen }) {
                     setShareModalOpen(true);
                     setShowMobileMenu(false);
                   }}
-                  className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-3 rounded-lg text-sm"
+                  className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-3 rounded-lg text-sm transition-colors"
                 >
                   Share Note
                 </button>
@@ -418,7 +415,7 @@ export default function TextEditor({ setSidebarOpen }) {
                     setShowMobileMenu(false);
                   }} 
                   disabled={isSaving}
-                  className="w-full bg-[#8A784E] hover:bg-[#3B3B1A] text-white py-2 px-3 rounded-lg text-sm disabled:opacity-50"
+                  className="w-full bg-[#8A784E] hover:bg-[#3B3B1A] text-white py-2 px-3 rounded-lg text-sm disabled:opacity-50 transition-colors"
                 >
                   {isSaving ? 'Saving...' : 'Save Note'}
                 </button>
@@ -430,7 +427,7 @@ export default function TextEditor({ setSidebarOpen }) {
                     handleDelete();
                     setShowMobileMenu(false);
                   }} 
-                  className="w-full bg-red-500 hover:bg-red-600 text-white py-2 px-3 rounded-lg text-sm"
+                  className="w-full bg-red-500 hover:bg-red-600 text-white py-2 px-3 rounded-lg text-sm transition-colors"
                 >
                   Delete Note
                 </button>
@@ -440,7 +437,15 @@ export default function TextEditor({ setSidebarOpen }) {
         )}
       </div>
 
-      {/* Editor Container - FIXED FOR MOBILE */}
+      {/* Mobile menu overlay - FIXED */}
+      {showMobileMenu && (
+        <div 
+          className="fixed inset-0 bg-black/20 z-20 lg:hidden"
+          onClick={() => setShowMobileMenu(false)}
+        />
+      )}
+
+      {/* Editor Container - FULL TINYMCE FEATURES */}
       <div className="flex-1 p-4 min-h-0 overflow-hidden">
         <div className="w-full h-full bg-white/40 backdrop-blur-sm rounded-xl shadow-lg border border-white/20 overflow-hidden">
           <Editor
@@ -454,48 +459,182 @@ export default function TextEditor({ setSidebarOpen }) {
             init={{
               height: '100%',
               width: '100%',
-              plugins: 'link image code lists table emoticons autoresize wordcount',
+              // ALL TINYMCE PLUGINS
+              plugins: [
+                'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+                'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+                'insertdatetime', 'media', 'table', 'help', 'wordcount', 'emoticons',
+                'template', 'paste', 'textcolor', 'colorpicker', 'textpattern',
+                'codesample', 'hr', 'pagebreak', 'nonbreaking', 'save', 'autosave',
+                'directionality', 'visualchars', 'quickbars', 'importcss'
+              ],
+              // FULL TOOLBAR WITH ALL FEATURES
               toolbar: permission === 'edit' 
-                ? 'undo redo | formatselect | bold italic underline | alignleft aligncenter alignright | bullist numlist | link image'
+                ? 'undo redo | blocks | ' +
+                  'bold italic forecolor backcolor | alignleft aligncenter ' +
+                  'alignright alignjustify | bullist numlist outdent indent | ' +
+                  'removeformat | table tabledelete | tableprops tablerowprops tablecellprops | ' +
+                  'tableinsertrowbefore tableinsertrowafter tabledeleterow | ' +
+                  'tableinsertcolbefore tableinsertcolafter tabledeletecol | ' +
+                  'link image media | codesample | emoticons charmap | ' +
+                  'searchreplace | visualblocks fullscreen | ' +
+                  'insertdatetime pagebreak | help'
                 : false,
-              menubar: false,
+              menubar: permission === 'edit' ? 'file edit view insert format tools table help' : false,
               branding: false,
               skin: 'borderless',
               readonly: permission !== 'edit',
               toolbar_mode: 'sliding',
               toolbar_sticky: false,
-              mobile: {
-                toolbar_mode: 'sliding',
-                menubar: false
-              },
+              contextmenu: 'link image table',
+              quickbars_selection_toolbar: 'bold italic | quicklink h2 h3 blockquote quickimage quicktable',
+              quickbars_insert_toolbar: 'quickimage quicktable',
+              paste_data_images: true,
+              automatic_uploads: true,
+              file_picker_types: 'image',
+              // FULL CONTENT STYLE
               content_style: `
                 body { 
-                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
                   font-size: 16px; 
                   line-height: 1.6; 
                   color: #3B3B1A;
                   background: transparent;
-                  padding: 16px;
-                  margin: 10px;
+                  padding: 20px;
+                  margin: 0;
                   min-height: 100%;
                   box-sizing: border-box;
                 }
                 p { margin-bottom: 16px; }
-                h1, h2, h3, h4, h5, h6 { color: #8A784E; margin: 20px 0 10px 0; }
+                h1, h2, h3, h4, h5, h6 { 
+                  color: #8A784E; 
+                  margin: 24px 0 12px 0;
+                  font-weight: 600;
+                }
+                h1 { font-size: 2.5em; }
+                h2 { font-size: 2em; }
+                h3 { font-size: 1.5em; }
+                h4 { font-size: 1.25em; }
+                h5 { font-size: 1.1em; }
+                h6 { font-size: 1em; }
+                blockquote {
+                  border-left: 4px solid #8A784E;
+                  margin: 16px 0;
+                  padding: 8px 16px;
+                  background: rgba(138, 120, 78, 0.1);
+                  font-style: italic;
+                }
+                pre {
+                  background: #f5f5f5;
+                  border: 1px solid #ddd;
+                  border-radius: 4px;
+                  padding: 12px;
+                  overflow-x: auto;
+                  font-family: 'Courier New', monospace;
+                }
+                code {
+                  background: #f5f5f5;
+                  padding: 2px 4px;
+                  border-radius: 3px;
+                  font-family: 'Courier New', monospace;
+                  font-size: 0.9em;
+                }
+                table {
+                  border-collapse: collapse;
+                  width: 100%;
+                  margin: 16px 0;
+                }
+                table, th, td {
+                  border: 1px solid #ddd;
+                }
+                th, td {
+                  padding: 8px 12px;
+                  text-align: left;
+                }
+                th {
+                  background-color: #f5f5f5;
+                  font-weight: 600;
+                }
+                img {
+                  max-width: 100%;
+                  height: auto;
+                  border-radius: 8px;
+                  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                }
+                a {
+                  color: #8A784E;
+                  text-decoration: underline;
+                }
+                a:hover {
+                  color: #3B3B1A;
+                }
+                hr {
+                  border: none;
+                  border-top: 2px solid #8A784E;
+                  margin: 24px 0;
+                  opacity: 0.3;
+                }
+                ul, ol {
+                  padding-left: 24px;
+                  margin: 16px 0;
+                }
+                li {
+                  margin-bottom: 8px;
+                }
                 @media (max-width: 768px) {
                   body {
                     padding: 12px;
                     font-size: 16px;
                   }
+                  h1 { font-size: 2em; }
+                  h2 { font-size: 1.75em; }
+                  h3 { font-size: 1.5em; }
+                  table {
+                    font-size: 14px;
+                  }
+                  th, td {
+                    padding: 6px 8px;
+                  }
                 }
               `,
+              // MOBILE SPECIFIC SETTINGS
+              mobile: {
+                toolbar_mode: 'sliding',
+                menubar: false,
+                plugins: [
+                  'lists', 'autolink', 'link', 'image', 'charmap',
+                  'searchreplace', 'code', 'insertdatetime', 'media',
+                  'table', 'emoticons', 'paste', 'textcolor', 'help'
+                ],
+                toolbar: permission === 'edit' 
+                  ? 'undo redo | bold italic | alignleft aligncenter alignright | bullist numlist | link image | removeformat'
+                  : false
+              },
               statusbar: false,
               resize: false,
               auto_focus: false,
+              // ADVANCED FEATURES
+              save_onsavecallback: () => {
+                if (permission === 'edit') {
+                  handleSave();
+                }
+              },
+              save_enablewhendirty: true,
+              autosave_interval: '30s',
+              autosave_prefix: 'scribe-autosave-{path}{query}-{id}-',
+              autosave_restore_when_empty: false,
+              autosave_retention: '2m',
+              // SETUP FUNCTION
               setup: function(editor) {
-                // Ensure editor works on mobile
                 editor.on('init', function() {
                   editor.getContainer().style.border = 'none';
+                });
+                
+                // Custom keyboard shortcuts
+                editor.addShortcut('ctrl+s', 'Save note', () => {
+                  if (permission === 'edit') {
+                    handleSave();
+                  }
                 });
               }
             }}
@@ -512,14 +651,6 @@ export default function TextEditor({ setSidebarOpen }) {
         note={foundNote}
         onShareUpdate={handleShareUpdate}
       />
-
-      {/* Mobile menu overlay */}
-      {showMobileMenu && (
-        <div 
-          className="fixed inset-0 bg-black/20 z-10 lg:hidden"
-          onClick={() => setShowMobileMenu(false)}
-        />
-      )}
     </div>
   );
 }
