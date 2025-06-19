@@ -476,7 +476,7 @@ export default function TextEditor({ setSidebarOpen }) {
                   color: #3B3B1A;
                   background: transparent;
                   padding: 16px;
-                  margin: 0;
+                  margin: 10px;
                   min-height: 100%;
                   box-sizing: border-box;
                 }
