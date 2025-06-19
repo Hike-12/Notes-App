@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/5.1/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
-
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -20,12 +20,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-%9u5r_cr(-^d+*h#cu0!*j5!%7-3y8ogfi73rab5vh4c(j*01@'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-%9u5r_cr(-^d+*h#cu0!*j5!%7-3y8ogfi73rab5vh4c(j*01@')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+ALLOWED_HOSTS = [
+    'localhost', 
+    '127.0.0.1', 
+    '0.0.0.0',
+    'notes-app-dhv1.onrender.com',  # Your Render backend URL
+    '.onrender.com'
+]
 
 
 # Application definition
@@ -45,6 +51,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -133,11 +140,19 @@ STATICFILES_DIRS = [
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False  # Change to False for production
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
+    "http://localhost:5173",  # Keep for local development
     "http://127.0.0.1:5173",
+    "https://scribe-ruddy.vercel.app",  # Your Vercel frontend URL
+    "https://scribe-ruddy.vercel.app/",  # With trailing slash
+]
+
+# Add CSRF trusted origins
+CSRF_TRUSTED_ORIGINS = [
+    "https://notes-app-dhv1.onrender.com",
+    "https://scribe-ruddy.vercel.app",
 ]
 
 # Session settings
