@@ -10,7 +10,7 @@ class Note(models.Model):
     is_public = models.BooleanField(default=False)  # For public sharing
     shared_with = models.ManyToManyField(
         User, 
-        related_name='shared_notes', 
+        related_name='accessible_notes',  # Changed from 'shared_notes'
         blank=True,
         help_text="Users who have access to this note"
     )
@@ -20,9 +20,6 @@ class Note(models.Model):
 
     class Meta:
         ordering = ['-last_modified']
-    
-    def __str__(self):
-        return f"{self.title} - {self.owner.username}"
 
 class NoteShare(models.Model):
     PERMISSION_CHOICES = [
@@ -31,7 +28,7 @@ class NoteShare(models.Model):
     ]
     
     note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='shares')
-    shared_with = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shared_notes')
+    shared_with = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_shares')  # Changed from 'shared_notes'
     permission = models.CharField(max_length=10, choices=PERMISSION_CHOICES, default='view')
     shared_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shares_given')
     shared_at = models.DateTimeField(auto_now_add=True)
