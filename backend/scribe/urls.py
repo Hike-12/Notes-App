@@ -16,8 +16,21 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path,include
+from django.http import JsonResponse
+
+def root_view(request):
+    return JsonResponse({
+        'message': 'Scribe API is running',
+        'status': 'ok',
+        'endpoints': {
+            'auth': '/api/auth/',
+            'notes': '/api/',
+            'websocket': '/ws/note/<note_id>/'
+        }
+    })
 
 urlpatterns = [
+    path('', root_view, name='root'),
     path('admin/', admin.site.urls),
     path('', include('home.urls')),
 ]

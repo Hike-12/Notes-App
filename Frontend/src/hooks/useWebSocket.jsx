@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useAuth } from '../contexts/AuthContext'; // Import auth context
+import { useAuth } from '../contexts/AuthContext';
 
 export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onCursorUpdate) => {
   const ws = useRef(null);
@@ -7,23 +7,26 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
   const [collaborators, setCollaborators] = useState([]);
   const reconnectTimeoutRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
-  const { user } = useAuth(); // Get user from context
+  const { user } = useAuth();
+  const isConnectingRef = useRef(false); // Add this to prevent multiple connections
 
   useEffect(() => {
-    if (!noteId || !user) return; // Don't connect if no user
+    if (!noteId || !user || isConnectingRef.current) return;
 
     const connect = () => {
-      // Don't reconnect if we're already connected or attempting to connect
-      if (ws.current?.readyState === WebSocket.CONNECTING || 
+      // Prevent multiple simultaneous connections
+      if (isConnectingRef.current || 
+          ws.current?.readyState === WebSocket.CONNECTING || 
           ws.current?.readyState === WebSocket.OPEN) {
+        console.log('Connection already exists or in progress');
         return;
       }
+
+      isConnectingRef.current = true; // Mark as connecting
 
       const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
       const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
       const wsHost = apiUrl.replace(/^https?:\/\//, '');
-      
-      // Add user ID to WebSocket URL for authentication
       const wsUrl = `${wsProtocol}://${wsHost}/ws/note/${noteId}/?user_id=${user.id}`;
       
       console.log('Connecting to WebSocket:', wsUrl);
@@ -33,7 +36,8 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
       ws.current.onopen = () => {
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
-        console.log('WebSocket connected');
+        isConnectingRef.current = false; // Reset connecting flag
+        console.log('WebSocket connected successfully');
       };
 
       ws.current.onmessage = (event) => {
@@ -68,22 +72,19 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
 
       ws.current.onclose = (event) => {
         setIsConnected(false);
+        isConnectingRef.current = false; // Reset connecting flag
         console.log('WebSocket disconnected:', event.code, event.reason);
         
-        // Handle authentication errors
-        if (event.code === 4001) {
-          console.error('Authentication required for WebSocket');
-          return; // Don't reconnect
-        }
-        if (event.code === 4003) {
-          console.error('Permission denied for WebSocket');
-          return; // Don't reconnect
+        // Don't reconnect for authentication errors
+        if (event.code === 4001 || event.code === 4003) {
+          console.error('Authentication/Permission error - not reconnecting');
+          return;
         }
         
-        // Only try to reconnect for network issues and if we haven't exceeded attempts
+        // Only reconnect for unexpected disconnections
         if (event.code === 1006 && reconnectAttemptsRef.current < 3) {
           reconnectAttemptsRef.current++;
-          const delay = Math.min(2000 * reconnectAttemptsRef.current, 8000);
+          const delay = Math.min(3000 * reconnectAttemptsRef.current, 10000);
           console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
           
           reconnectTimeoutRef.current = setTimeout(() => {
@@ -94,21 +95,27 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
 
       ws.current.onerror = (error) => {
         console.error('WebSocket error:', error);
+        isConnectingRef.current = false; // Reset on error
       };
     };
 
     connect();
 
     return () => {
+      console.log('Cleaning up WebSocket connection');
+      isConnectingRef.current = false;
+      
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
       
-      if (ws.current) {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         ws.current.close(1000, 'Component unmounting');
       }
+      
+      ws.current = null;
     };
-  }, [noteId, user, onContentChange, onCollaboratorsUpdate, onCursorUpdate]); // Add user dependency
+  }, [noteId, user]); // Remove other dependencies that cause re-connections
 
   const sendContentChange = (content, userId) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {

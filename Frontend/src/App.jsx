@@ -10,7 +10,8 @@ function AppContent() {
   const [notes, setNotes] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const { user, loading, isAuthenticated } = useAuth();
+  const { user, loading, isAuthenticated,authCheck } = useAuth();
+  
 
   // Fetch notes initially
   useEffect(() => {
@@ -30,7 +31,7 @@ function AppContent() {
     }
   }, [isAuthenticated]);
 
-  if (loading) {
+  if (loading || !authCheck) {
     return (
       <div className="flex items-center justify-center h-screen bg-[#E7EFC7]">
         <div className="bg-white/40 backdrop-blur-sm rounded-2xl p-8 shadow-lg border border-white/20">
