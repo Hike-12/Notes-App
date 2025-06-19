@@ -11,7 +11,6 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 import os
 from pathlib import Path
-from urllib.parse import urlparse
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -179,23 +178,18 @@ CSRF_COOKIE_HTTPONLY = False  # Allow JS to read CSRF token
 CSRF_USE_SESSIONS = False  # Use cookies instead of sessions for CSRF
 
 # Channels settings
-redis_url = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379')
-
-if redis_url.startswith('redis://'):
-    parsed = urlparse(redis_url)
-    CHANNEL_LAYERS = {
-        'default': {
-            'BACKEND': 'channels_redis.core.RedisChannelLayer',
-            'CONFIG': {
-                "hosts": [(parsed.hostname, parsed.port or 6379)],
-                "password": parsed.password,
-            },
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [
+                {
+                    "address": os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379'),
+                    "connection_kwargs": {
+                        "ssl_cert_reqs": None,
+                    },
+                }
+            ] if os.environ.get('REDIS_URL') else ['redis://127.0.0.1:6379'],
         },
-    }
-else:
-    # Fallback for development
-    CHANNEL_LAYERS = {
-        'default': {
-            'BACKEND': 'channels.layers.InMemoryChannelLayer',
-        },
-    }
+    },
+}
