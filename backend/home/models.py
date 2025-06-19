@@ -8,6 +8,18 @@ class Note(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     last_modified = models.DateTimeField(auto_now=True)
     is_public = models.BooleanField(default=False)  # For public sharing
+    shared_with = models.ManyToManyField(
+        User, 
+        related_name='shared_notes', 
+        blank=True,
+        help_text="Users who have access to this note"
+    )
+
+    def __str__(self):
+        return self.title or f"Note {self.id}"
+
+    class Meta:
+        ordering = ['-last_modified']
     
     def __str__(self):
         return f"{self.title} - {self.owner.username}"

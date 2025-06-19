@@ -32,24 +32,25 @@ class NoteConsumer(AsyncWebsocketConsumer):
             self.user = user
             print(f"✅ WebSocket User found: {user.username} (ID: {user.id})")
             
-            # Get note and check permissions with detailed logging
-            note = await self.get_note(self.note_id)
-            print(f"✅ Note found: '{note.title}' (ID: {note.id})")
-            print(f"📝 Note owner: {note.owner.username} (ID: {note.owner.id})")
+            # Get note with all related data using proper async methods
+            note_data = await self.get_note_with_details(self.note_id)
+            if not note_data:
+                print(f"❌ Note {self.note_id} not found")
+                await self.close(code=4004)
+                return
             
-            # Check if user is owner
-            is_owner = note.owner.id == user.id
+            print(f"✅ Note found: '{note_data['title']}' (ID: {note_data['id']})")
+            print(f"📝 Note owner: {note_data['owner_username']} (ID: {note_data['owner_id']})")
+            
+            # Check permissions
+            is_owner = note_data['owner_id'] == user.id
+            shared_user_ids = note_data['shared_user_ids']
+            is_shared = user.id in shared_user_ids
+            
             print(f"👑 Is owner: {is_owner}")
-            
-            # Check if user is in shared_with list
-            shared_users = await self.get_shared_users(note)
-            shared_usernames = [u.username for u in shared_users]
-            is_shared = user in shared_users
-            
-            print(f"👥 Shared with users: {shared_usernames}")
+            print(f"👥 Shared with user IDs: {shared_user_ids}")
             print(f"🔗 User '{user.username}' in shared list: {is_shared}")
             
-            # Final access check
             has_access = is_owner or is_shared
             print(f"🔒 Final access decision: {has_access}")
             
@@ -91,13 +92,19 @@ class NoteConsumer(AsyncWebsocketConsumer):
             return None
 
     @database_sync_to_async
-    def get_note(self, note_id):
-        return Note.objects.get(id=note_id)
-
-    @database_sync_to_async
-    def get_shared_users(self, note):
-        """Get all users who have access to this note"""
-        return list(note.shared_with.all())
+    def get_note_with_details(self, note_id):
+        """Get note with all related data in one async call"""
+        try:
+            note = Note.objects.select_related('owner').prefetch_related('shared_with').get(id=note_id)
+            return {
+                'id': note.id,
+                'title': note.title,
+                'owner_id': note.owner.id,
+                'owner_username': note.owner.username,
+                'shared_user_ids': list(note.shared_with.values_list('id', flat=True))
+            }
+        except Note.DoesNotExist:
+            return None
 
     async def disconnect(self, close_code):
         print(f"🔌 WebSocket DISCONNECTING: User {getattr(self, 'user', 'Unknown')} from note {self.note_id} (code: {close_code})")
