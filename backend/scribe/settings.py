@@ -131,9 +131,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'  # Add this line
-STATICFILES_DIRS = [
-    BASE_DIR / 'static',  # Add this if you have a static folder
-]
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -146,7 +144,6 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",  # Keep for local development
     "http://127.0.0.1:5173",
     "https://scribe-ruddy.vercel.app",  # Your Vercel frontend URL
-    "https://scribe-ruddy.vercel.app/",  # With trailing slash
 ]
 
 # Add CSRF trusted origins
@@ -164,7 +161,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [('127.0.0.1', 6379)],
+            "hosts": [os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379')],
         },
     },
 }
