@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '../contexts/AuthContext'; // Import auth context
 
 export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onCursorUpdate) => {
   const ws = useRef(null);
@@ -6,9 +7,10 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
   const [collaborators, setCollaborators] = useState([]);
   const reconnectTimeoutRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
+  const { user } = useAuth(); // Get user from context
 
   useEffect(() => {
-    if (!noteId) return;
+    if (!noteId || !user) return; // Don't connect if no user
 
     const connect = () => {
       // Don't reconnect if we're already connected or attempting to connect
@@ -20,7 +22,9 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
       const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
       const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
       const wsHost = apiUrl.replace(/^https?:\/\//, '');
-      const wsUrl = `${wsProtocol}://${wsHost}/ws/note/${noteId}/`;
+      
+      // Add user ID to WebSocket URL for authentication
+      const wsUrl = `${wsProtocol}://${wsHost}/ws/note/${noteId}/?user_id=${user.id}`;
       
       console.log('Connecting to WebSocket:', wsUrl);
       
@@ -28,7 +32,7 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
 
       ws.current.onopen = () => {
         setIsConnected(true);
-        reconnectAttemptsRef.current = 0; // Reset attempts on successful connection
+        reconnectAttemptsRef.current = 0;
         console.log('WebSocket connected');
       };
 
@@ -66,10 +70,20 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
         setIsConnected(false);
         console.log('WebSocket disconnected:', event.code, event.reason);
         
-        // Only try to reconnect if it's not a normal closure and we haven't exceeded attempts
-        if (event.code !== 1000 && reconnectAttemptsRef.current < 5) {
+        // Handle authentication errors
+        if (event.code === 4001) {
+          console.error('Authentication required for WebSocket');
+          return; // Don't reconnect
+        }
+        if (event.code === 4003) {
+          console.error('Permission denied for WebSocket');
+          return; // Don't reconnect
+        }
+        
+        // Only try to reconnect for network issues and if we haven't exceeded attempts
+        if (event.code === 1006 && reconnectAttemptsRef.current < 3) {
           reconnectAttemptsRef.current++;
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 10000); // Exponential backoff
+          const delay = Math.min(2000 * reconnectAttemptsRef.current, 8000);
           console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
           
           reconnectTimeoutRef.current = setTimeout(() => {
@@ -86,16 +100,15 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
     connect();
 
     return () => {
-      // Clear any pending reconnection
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
       
       if (ws.current) {
-        ws.current.close(1000, 'Component unmounting'); // Normal closure
+        ws.current.close(1000, 'Component unmounting');
       }
     };
-  }, [noteId, onContentChange, onCollaboratorsUpdate, onCursorUpdate]);
+  }, [noteId, user, onContentChange, onCollaboratorsUpdate, onCursorUpdate]); // Add user dependency
 
   const sendContentChange = (content, userId) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {

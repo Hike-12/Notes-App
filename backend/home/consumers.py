@@ -3,32 +3,70 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from .models import Note, Collaborator
 import random
+from channels.db import database_sync_to_async
+from django.contrib.auth.models import User
+from urllib.parse import parse_qs
 
 class NoteConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.note_id = self.scope['url_route']['kwargs']['note_id']
-        self.note_group_name = f'note_{self.note_id}'
+        self.room_group_name = f'note_{self.note_id}'
         
-        # Join note group
+        # Get user ID from query parameters
+        query_string = self.scope.get('query_string', b'').decode()
+        query_params = parse_qs(query_string)
+        user_id = query_params.get('user_id', [None])[0]
+        
+        if not user_id:
+            print("No user_id provided in WebSocket connection")
+            await self.close(code=4001)
+            return
+        
+        try:
+            # Get user from database
+            user = await self.get_user(user_id)
+            if not user:
+                print(f"User {user_id} not found")
+                await self.close(code=4001)
+                return
+            
+            self.user = user
+            
+            # Check if user has access to this note
+            note = await self.get_note(self.note_id)
+            if not await self.user_has_access(user, note):
+                print(f"User {user.username} doesn't have access to note {self.note_id}")
+                await self.close(code=4003)
+                return
+                
+        except Exception as e:
+            print(f"Error authenticating WebSocket: {e}")
+            await self.close(code=4004)
+            return
+
+        # Join room group
         await self.channel_layer.group_add(
-            self.note_group_name,
+            self.room_group_name,
             self.channel_name
         )
-        
+
         await self.accept()
-        
-        # Add user as collaborator
-        user_data = await self.add_collaborator()
-        
-        # Send current collaborators list to all users
-        collaborators = await self.get_collaborators()
-        await self.channel_layer.group_send(
-            self.note_group_name,
-            {
-                'type': 'collaborators_update',
-                'collaborators': collaborators
-            }
-        )
+        print(f"WebSocket connected: User {user.username} to note {self.note_id}")
+
+    @database_sync_to_async
+    def get_user(self, user_id):
+        try:
+            return User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return None
+
+    @database_sync_to_async
+    def get_note(self, note_id):
+        return Note.objects.get(id=note_id)
+
+    @database_sync_to_async
+    def user_has_access(self, user, note):
+        return note.owner == user or user in note.shared_with.all()
 
     async def disconnect(self, close_code):
         # Remove user as collaborator
