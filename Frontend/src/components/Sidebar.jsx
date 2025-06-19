@@ -44,6 +44,15 @@ export default function Sidebar({ notes, setSidebarOpen }) {
     if (setSidebarOpen) setSidebarOpen(false);
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
   const formatTimeAgo = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
