@@ -221,7 +221,7 @@ export default function TextEditor({ setSidebarOpen }) {
             >
               {isSaving ? (
                 <>
-                  <div className="animate-spin rounded-full h-3 h-3 sm:h-4 sm:w-4 border-b-2 border-white mr-1 sm:mr-2"></div>
+                  <div className="animate-spin rounded-full h-3 sm:h-4 sm:w-4 border-b-2 border-white mr-1 sm:mr-2"></div>
                   <span className="hidden sm:inline">Saving...</span>
                   <span className="sm:hidden">Save</span>
                 </>
