@@ -152,9 +152,27 @@ CSRF_TRUSTED_ORIGINS = [
     "https://scribe-ruddy.vercel.app",
 ]
 
+# Add these CORS headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
 # Session settings
 SESSION_COOKIE_AGE = 86400  # 24 hours
 SESSION_SAVE_EVERY_REQUEST = True
+SESSION_COOKIE_SECURE = not DEBUG  # Use secure cookies in production
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'  # Allow cross-origin cookies
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
 
 # Channels settings
 CHANNEL_LAYERS = {

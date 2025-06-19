@@ -19,21 +19,27 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const checkAuthStatus = async () => {
-    try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/auth/user/`, {
-        credentials: 'include'
-      });
+  try {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/auth/user/`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (response.ok) {
       const data = await response.json();
-      
       if (data.authenticated) {
         setUser(data.user);
       }
-    } catch (error) {
-      console.error('Auth check failed:', error);
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (error) {
+    console.error('Auth check failed:', error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const login = async (username, password) => {
     try {
