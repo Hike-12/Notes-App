@@ -59,7 +59,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'django.middleware.common.CommonMiddleware',
 ]
 
 ROOT_URLCONF = 'scribe.urls'
@@ -178,15 +177,22 @@ CSRF_COOKIE_HTTPONLY = False  # Allow JS to read CSRF token
 CSRF_USE_SESSIONS = False  # Use cookies instead of sessions for CSRF
 
 # Channels settings
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            "hosts": [(
-                os.environ.get('REDIS_HOST', '127.0.0.1'), 
-                int(os.environ.get('REDIS_PORT', 6379))
-            )],
-            "password": os.environ.get('REDIS_PASSWORD'),
+redis_url = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379')
+
+if redis_url and redis_url != 'redis://127.0.0.1:6379':
+    # Production Redis (Upstash)
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                "hosts": [redis_url],  # Use the full URL directly
+            },
         },
-    },
-}
+    }
+else:
+    # Development fallback
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
