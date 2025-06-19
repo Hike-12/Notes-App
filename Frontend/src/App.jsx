@@ -31,7 +31,7 @@ function AppContent() {
     }
   }, [isAuthenticated]);
 
-  if (loading || !authCheck) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-[#E7EFC7]">
         <div className="bg-white/40 backdrop-blur-sm rounded-2xl p-8 shadow-lg border border-white/20">
