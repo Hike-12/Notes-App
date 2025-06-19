@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Editor } from '@tinymce/tinymce-react';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWebSocket } from '../hooks/useWebSocket.jsx';
+import ShareModal from './ShareModal.jsx';
 
 // Utility functions
 const extractTitle = (htmlContent) => {
@@ -37,6 +38,9 @@ export default function TextEditor({ setSidebarOpen }) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [collaborators, setCollaborators] = useState([]);
   const [cursors, setCursors] = useState({});
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [permission, setPermission] = useState('edit');
+  const [isOwner, setIsOwner] = useState(false);
 
   // WebSocket connection
   const { isConnected, sendContentChange, sendCursorPosition } = useWebSocket(
@@ -70,8 +74,19 @@ export default function TextEditor({ setSidebarOpen }) {
     const fetchData = async () => {
       if (id) {
         try {
-          const response = await fetch(`http://localhost:8000/api/get-note/${id}/`);          
+          const response = await fetch(`http://localhost:8000/api/get-note/${id}/`, {
+            credentials: 'include'
+          });          
+          
           if (!response.ok) {
+            if (response.status === 401) {
+              navigate('/');
+              return;
+            }
+            if (response.status === 403) {
+              setError('You do not have permission to access this note');
+              return;
+            }
             throw new Error('Network response was not ok');
           }
 
@@ -82,6 +97,8 @@ export default function TextEditor({ setSidebarOpen }) {
             setFoundNote(data);
             setIsNewNote(false);
             setCollaborators(data.collaborators || []);
+            setPermission(data.permission || 'edit');
+            setIsOwner(data.is_owner || false);
           } else {
             setError('Note not found');
           }
@@ -94,14 +111,21 @@ export default function TextEditor({ setSidebarOpen }) {
       } else {
         setContent('');
         setIsNewNote(true);
+        setPermission('edit');
+        setIsOwner(true);
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [id]);
+  }, [id, navigate]);
   
   const handleEditorChange = (newContent) => {
+    // Check if user has edit permission
+    if (permission !== 'edit') {
+      return; // Don't allow changes for view-only users
+    }
+    
     if (!isUpdatingFromWS.current) {
       setContent(newContent);
       // Send content change to other collaborators
@@ -137,9 +161,16 @@ export default function TextEditor({ setSidebarOpen }) {
       return;
     }
 
+    // Only owner can delete
+    if (!isOwner) {
+      alert('Only the note owner can delete this note.');
+      return;
+    }
+
     if (window.confirm('Are you sure you want to delete this note? This action cannot be undone.')) {
       fetch(`http://localhost:8000/api/delete-note/${foundNote.id}/`, {
         method: 'DELETE',
+        credentials: 'include'
       })
         .then(response => {
           if (response.ok) {
@@ -156,6 +187,12 @@ export default function TextEditor({ setSidebarOpen }) {
   };
 
   const handleSave = () => {
+    // Check if user has edit permission
+    if (permission !== 'edit') {
+      alert('You do not have permission to edit this note.');
+      return;
+    }
+
     setIsSaving(true);
     const title = extractTitle(content);
     const contentWithoutTitle = removeTitleFromContent(content);
@@ -166,6 +203,7 @@ export default function TextEditor({ setSidebarOpen }) {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
       body: JSON.stringify({
         id: isNewNote ? null : foundNote.id,
         content: fullContent,
@@ -175,24 +213,44 @@ export default function TextEditor({ setSidebarOpen }) {
       .then(response => response.json())
       .then(data => {
         setIsSaving(false);
-        setShowSuccess(true);
-        
-        if (isNewNote) {
-          navigate(`/edit-note/${data.id}`, { replace: true });
-          setTimeout(() => {
-            window.location.reload();
-          }, 1000);
+        if (data.success) {
+          setShowSuccess(true);
+          
+          if (isNewNote) {
+            navigate(`/edit-note/${data.id}`, { replace: true });
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
+          } else {
+            console.log('Content saved:', data);
+            setTimeout(() => {
+              setShowSuccess(false);
+            }, 2000);
+          }
         } else {
-          console.log('Content saved:', data);
-          setTimeout(() => {
-            setShowSuccess(false);
-          }, 2000);
+          alert(data.message || 'Failed to save note');
         }
       })
       .catch(error => {
         console.error('There was an error saving the content!', error);
         setIsSaving(false);
       });
+  };
+
+  const handleShareUpdate = () => {
+    // Refresh note data to get updated shares
+    if (id) {
+      fetch(`http://localhost:8000/api/get-note/${id}/`, {
+        credentials: 'include'
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data) {
+            setFoundNote(data);
+          }
+        })
+        .catch(error => console.error('Error refreshing note:', error));
+    }
   };
 
   if (loading) {
@@ -270,12 +328,32 @@ export default function TextEditor({ setSidebarOpen }) {
               <h1 className="text-xl sm:text-2xl font-bold text-[#3B3B1A]">
                 {isNewNote ? 'New Note' : 'Edit Note'}
               </h1>
-              {/* Collaboration status */}
+              {/* Collaboration status and permissions */}
               <div className="flex items-center space-x-2 mt-1">
                 <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
                 <span className="text-xs text-[#8A784E]">
                   {isConnected ? 'Connected' : 'Disconnected'} • {collaborators.length} collaborator{collaborators.length !== 1 ? 's' : ''}
                 </span>
+                {!isNewNote && (
+                  <>
+                    <span className="text-xs text-[#8A784E]">•</span>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      permission === 'edit' 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {permission === 'edit' ? 'Can Edit' : 'View Only'}
+                    </span>
+                    {!isOwner && foundNote?.owner && (
+                      <>
+                        <span className="text-xs text-[#8A784E]">•</span>
+                        <span className="text-xs text-[#8A784E]">
+                          Shared by {foundNote.owner.username}
+                        </span>
+                      </>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -302,28 +380,46 @@ export default function TextEditor({ setSidebarOpen }) {
           )}
           
           <div className="flex items-center space-x-2 sm:space-x-3">
-            <button 
-              onClick={handleSave} 
-              disabled={isSaving}
-              className="bg-[#8A784E] hover:bg-[#3B3B1A] text-white py-2 px-3 sm:px-6 rounded-xl font-semibold shadow-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center text-sm sm:text-base"
-            >
-              {isSaving ? (
-                <>
-                  <div className="animate-spin rounded-full h-3 h-3 sm:h-4 sm:w-4 border-b-2 border-white mr-1 sm:mr-2"></div>
-                  <span className="hidden sm:inline">Saving...</span>
-                  <span className="sm:hidden">Save</span>
-                </>
-              ) : (
-                <>
-                  <svg className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 0V6a2 2 0 00-2-2H9a2 2 0 00-2 2v1m1 0h4m-4 0v9m4-9v9" />
-                  </svg>
-                  Save
-                </>
-              )}
-            </button>
+            {/* Share button - only show for owners and non-new notes */}
+            {!isNewNote && isOwner && (
+              <button 
+                onClick={() => setShareModalOpen(true)}
+                className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-3 sm:px-6 rounded-xl font-semibold shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center text-sm sm:text-base"
+              >
+                <svg className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                </svg>
+                <span className="hidden sm:inline">Share</span>
+                <span className="sm:hidden">Share</span>
+              </button>
+            )}
+
+            {/* Save button - only show if user has edit permission */}
+            {permission === 'edit' && (
+              <button 
+                onClick={handleSave} 
+                disabled={isSaving}
+                className="bg-[#8A784E] hover:bg-[#3B3B1A] text-white py-2 px-3 sm:px-6 rounded-xl font-semibold shadow-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center text-sm sm:text-base"
+              >
+                {isSaving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 h-3 sm:h-4 sm:w-4 border-b-2 border-white mr-1 sm:mr-2"></div>
+                    <span className="hidden sm:inline">Saving...</span>
+                    <span className="sm:hidden">Save</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 0V6a2 2 0 00-2-2H9a2 2 0 00-2 2v1m1 0h4m-4 0v9m4-9v9" />
+                    </svg>
+                    Save
+                  </>
+                )}
+              </button>
+            )}
             
-            {!isNewNote && (
+            {/* Delete button - only show for owners */}
+            {!isNewNote && isOwner && (
               <button 
                 onClick={handleDelete} 
                 className="bg-red-500 hover:bg-red-600 text-white py-2 px-3 sm:px-6 rounded-xl font-semibold shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center text-sm sm:text-base"
@@ -355,10 +451,13 @@ export default function TextEditor({ setSidebarOpen }) {
               init={{
                 height: '100%',
                 plugins: 'link image code lists table emoticons autoresize',
-                toolbar: 'undo redo | formatselect | bold italic underline | alignleft aligncenter alignright alignjustify | bullist numlist | outdent indent | removeformat | link image | emoticons',
+                toolbar: permission === 'edit' 
+                  ? 'undo redo | formatselect | bold italic underline | alignleft aligncenter alignright alignjustify | bullist numlist | outdent indent | removeformat | link image | emoticons'
+                  : false, // Hide toolbar for view-only users
                 menubar: false,
                 branding: false,
                 skin: 'borderless',
+                readonly: permission !== 'edit', // Make editor read-only for view-only users
                 content_style: `
                   body { 
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
@@ -367,6 +466,7 @@ export default function TextEditor({ setSidebarOpen }) {
                     color: #3B3B1A;
                     background: transparent;
                     padding: 10px;
+                    ${permission !== 'edit' ? 'pointer-events: none; user-select: text;' : ''}
                   }
                   @media (min-width: 640px) {
                     body {
@@ -394,6 +494,14 @@ export default function TextEditor({ setSidebarOpen }) {
           </div>
         </div>
       </div>
+
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        note={foundNote}
+        onShareUpdate={handleShareUpdate}
+      />
     </div>
   );
 }

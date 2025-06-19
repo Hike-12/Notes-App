@@ -9,7 +9,16 @@ export default function Sidebar({ notes, setSidebarOpen }) {
   useEffect(() => {
     const fetchNotes = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/sidebar/');
+        const response = await fetch('http://localhost:8000/api/sidebar/', {
+          credentials: 'include'
+        });
+        
+        if (response.status === 401) {
+          // User not authenticated, redirect to login
+          navigate('/');
+          return;
+        }
+        
         const data = await response.json();
         setNotesData(data);
       } catch (error) {
@@ -21,7 +30,7 @@ export default function Sidebar({ notes, setSidebarOpen }) {
     // Refresh every 30 seconds to update collaboration status
     const interval = setInterval(fetchNotes, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [navigate]);
 
   const handleNoteClick = (id) => {
     navigate(`/edit-note/${id}`);
@@ -101,19 +110,56 @@ export default function Sidebar({ notes, setSidebarOpen }) {
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <h3 className="text-base sm:text-lg font-semibold text-[#3B3B1A] group-hover:text-[#8A784E] transition-colors duration-200 line-clamp-1 break-words">
-                        {note.title || 'Untitled Note'}
-                      </h3>
-                      {note.collaborators > 0 && (
-                        <div className="flex items-center space-x-1 text-xs text-[#8A784E] bg-green-100 px-2 py-1 rounded-full">
-                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                          <span>{note.collaborators}</span>
-                        </div>
-                      )}
+                      <div className="flex items-center space-x-2">
+                        <h3 className="text-base sm:text-lg font-semibold text-[#3B3B1A] group-hover:text-[#8A784E] transition-colors duration-200 line-clamp-1 break-words">
+                          {note.title || 'Untitled Note'}
+                        </h3>
+                        
+                        {/* Owner/Shared indicator */}
+                        {!note.is_owner && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                            Shared
+                          </span>
+                        )}
+                        
+                        {/* Permission indicator */}
+                        {note.permission === 'view' && (
+                          <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                            View Only
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center space-x-1">
+                        {/* Collaboration indicator */}
+                        {note.collaborators > 0 && (
+                          <div className="flex items-center space-x-1 text-xs text-[#8A784E] bg-green-100 px-2 py-1 rounded-full">
+                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                            <span>{note.collaborators}</span>
+                          </div>
+                        )}
+                        
+                        {/* Share count indicator for owned notes */}
+                        {note.is_owner && note.shared_count > 0 && (
+                          <div className="flex items-center space-x-1 text-xs text-[#8A784E] bg-purple-100 px-2 py-1 rounded-full">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                            </svg>
+                            <span>{note.shared_count}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
+                    
                     <div className="flex items-center justify-between">
                       <p className="text-xs sm:text-sm text-[#8A784E] opacity-70">
-                        {note.collaborators > 0 ? 'Being edited' : 'Click to edit'}
+                        {note.collaborators > 0 ? 'Being edited' : 
+                         note.permission === 'view' ? 'View only' : 'Click to edit'}
+                        {!note.is_owner && note.shared_by && (
+                          <span className="block text-xs opacity-50">
+                            by {note.shared_by}
+                          </span>
+                        )}
                       </p>
                       <span className="text-xs text-[#8A784E] opacity-50">
                         {formatTimeAgo(note.last_modified)}

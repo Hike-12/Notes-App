@@ -1,20 +1,79 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
-import './App.css';
-import TextEditor from './components/TextEditor';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
+import TextEditor from './components/TextEditor';
+import AuthModal from './components/AuthModal';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import './App.css';
 
-function App() {
+function AppContent() {
   const [notes, setNotes] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const { user, loading, isAuthenticated } = useAuth();
 
   // Fetch notes initially
   useEffect(() => {
-    fetch('http://localhost:8000/api/sidebar/')
-      .then(response => response.json())
-      .then(data => setNotes(data))
-      .catch(error => console.error('Error fetching notes:', error));
-  }, []);
+    if (isAuthenticated) {
+      fetch('http://localhost:8000/api/sidebar/', {
+        credentials: 'include'
+      })
+        .then(response => {
+          if (response.status === 401) {
+            setAuthModalOpen(true);
+            return [];
+          }
+          return response.json();
+        })
+        .then(data => setNotes(data))
+        .catch(error => console.error('Error fetching notes:', error));
+    }
+  }, [isAuthenticated]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#E7EFC7]">
+        <div className="bg-white/40 backdrop-blur-sm rounded-2xl p-8 shadow-lg border border-white/20">
+          <div className="flex items-center space-x-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#8A784E]"></div>
+            <span className="text-[#3B3B1A] font-medium text-lg">Loading Scribe...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#E7EFC7]">
+        <div className="text-center">
+          <div className="bg-white/40 backdrop-blur-sm rounded-2xl p-8 shadow-lg border border-white/20 mb-6">
+            <h1 className="text-4xl font-bold text-[#3B3B1A] mb-4 flex items-center justify-center">
+              <svg className="w-10 h-10 mr-3 text-[#8A784E]" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+                <path fillRule="evenodd" d="M4 5a2 2 0 012-2v1a2 2 0 00-2 2v6a2 2 0 002 2h8a2 2 0 002-2V6a2 2 0 00-2-2V3a2 2 0 012-2v1a3 3 0 013 3v6a3 3 0 01-3 3H6a3 3 0 01-3-3V5z" clipRule="evenodd" />
+              </svg>
+              Scribe
+            </h1>
+            <p className="text-[#8A784E] text-lg mb-6">
+              Collaborative note-taking made simple
+            </p>
+            <button
+              onClick={() => setAuthModalOpen(true)}
+              className="bg-[#8A784E] hover:bg-[#3B3B1A] text-white font-semibold py-3 px-8 rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105"
+            >
+              Get Started
+            </button>
+          </div>
+        </div>
+        
+        <AuthModal 
+          isOpen={authModalOpen} 
+          onClose={() => setAuthModalOpen(false)} 
+        />
+      </div>
+    );
+  }
 
   return (
     <Router>
@@ -53,21 +112,31 @@ function App() {
                   {/* Mobile menu button */}
                   <button
                     onClick={() => setSidebarOpen(true)}
-                    className="lg:hidden fixed top-4 left-4 z-10 p-3 bg-white/40 backdrop-blur-sm rounded-xl shadow-lg border border-white/20"
+                    className="lg:hidden fixed top-4 left-4 z-10 p-3 rounded-xl bg-[#8A784E] text-white shadow-lg hover:bg-[#3B3B1A] transition-colors duration-200"
                   >
-                    <svg className="w-6 h-6 text-[#8A784E]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
                   </button>
 
-                  <div className="text-center p-6 sm:p-8 bg-white/30 backdrop-blur-sm rounded-3xl shadow-lg border border-white/20 max-w-md w-full">
-                    <div className="mb-6">
-                      <svg className="w-16 h-16 sm:w-20 sm:h-20 mx-auto text-[#8A784E] opacity-60" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 0v12h8V4H6z" clipRule="evenodd" />
-                      </svg>
+                  {/* Welcome content */}
+                  <div className="text-center max-w-2xl mx-auto">
+                    <div className="bg-white/40 backdrop-blur-sm rounded-3xl p-8 sm:p-12 shadow-2xl border border-white/20">
+                      <h1 className="text-4xl sm:text-6xl font-bold text-[#3B3B1A] mb-6 flex items-center justify-center">
+                        <svg className="w-12 h-12 sm:w-16 sm:h-16 mr-4 text-[#8A784E]" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+                          <path fillRule="evenodd" d="M4 5a2 2 0 012-2v1a2 2 0 00-2 2v6a2 2 0 002 2h8a2 2 0 002-2V6a2 2 0 00-2-2V3a2 2 0 012-2v1a3 3 0 013 3v6a3 3 0 01-3 3H6a3 3 0 01-3-3V5z" clipRule="evenodd" />
+                        </svg>
+                        Scribe
+                      </h1>
+                      <p className="text-lg sm:text-xl text-[#8A784E] mb-8 leading-relaxed">
+                        Welcome back, <span className="font-semibold">{user?.first_name || user?.username}</span>! 
+                        Ready to create something amazing?
+                      </p>
+                      <p className="text-base sm:text-lg text-[#8A784E] opacity-75 mb-8">
+                        Select a note from the sidebar to start editing, or create a new one to begin your next masterpiece.
+                      </p>
                     </div>
-                    <h2 className="text-xl sm:text-2xl font-bold text-[#3B3B1A] mb-2">Welcome to Scribe</h2>
-                    <p className="text-[#8A784E] text-base sm:text-lg">Select a note to edit or create a new one to get started</p>
                   </div>
                 </div>
               }
@@ -76,6 +145,14 @@ function App() {
         </div>
       </div>
     </Router>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
