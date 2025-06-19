@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Sidebar({ notes, setSidebarOpen }) {
   const navigate = useNavigate();
   const [notesData, setNotesData] = useState([]);
+  const { user, logout } = useAuth();
 
   // Fetch notes with collaboration info
   useEffect(() => {
@@ -55,7 +57,7 @@ export default function Sidebar({ notes, setSidebarOpen }) {
     return `${diffInDays}d ago`;
   };
 
-  return (
+return (
     <div className="h-full flex flex-col bg-[#AEC8A4]">
       {/* Header */}
       <div className="p-4 sm:p-6 border-b border-[#8A784E]/20">
@@ -74,6 +76,29 @@ export default function Sidebar({ notes, setSidebarOpen }) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+        </div>
+
+        {/* User info and logout */}
+        <div className="mb-4 p-3 bg-white/30 rounded-xl border border-white/20">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-[#3B3B1A]">
+                {user?.first_name || user?.username}
+              </p>
+              <p className="text-xs text-[#8A784E] opacity-70">
+                @{user?.username}
+              </p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="p-2 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 transition-colors duration-200 group"
+              title="Logout"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          </div>
         </div>
         
         <button 
