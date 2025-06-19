@@ -64,7 +64,7 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
         ws.current.close();
       }
     };
-  }, [noteId]);
+  }, [noteId, onContentChange, onCollaboratorsUpdate, onCursorUpdate]);
 
   const sendContentChange = (content, userId) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
