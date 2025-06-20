@@ -430,9 +430,6 @@ const { isConnected, collaborators: yjsCollaborators } = useYjs(
               height: '100%',
               width: '100%',
               typing_speed: 300,
-              browser_spellcheck: false,
-              gecko_spellcheck: false,
-              entity_encoding: 'raw',
               // ALL TINYMCE PLUGINS
               plugins: [
                 'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
