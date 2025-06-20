@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
-import { TinyMCEBinding } from 'y-tinymce';
+import { TinyMCEBinding } from '../utils/TinyMCEBinding';
 import { useAuth } from '../contexts/AuthContext';
 
 export const useYjs = (noteId, editorRef) => {
