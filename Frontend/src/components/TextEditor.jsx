@@ -162,52 +162,63 @@ export default function TextEditor({ setSidebarOpen }) {
   };
 
   // SIMPLIFIED CURSOR HANDLING
-  const handleCursorChange = (editor) => {
-  if (!isUpdatingFromWS.current && id && isConnected) {
-    try {
-      const selection = editor.selection;
-      const range = selection.getRng();
-
-      // Get caret rect
-      const rangeRect = range.getBoundingClientRect();
-
-      // Use the editor container rather than just the editor body
-      const containerRect = editor.getContainer().getBoundingClientRect();
-
-      const position = {
-        top: rangeRect.top - containerRect.top + editor.getDoc().documentElement.scrollTop + 5, // +5 to shift cursor down
-        left: rangeRect.left - containerRect.left + editor.getDoc().documentElement.scrollLeft
-      };
-
-      // Send position to the server
-      const collaborator = collaborators.find(c => c.user_identifier === currentUserId.current);
-      const userName = collaborator?.user_name || `User${currentUserId.current.slice(-5)}`;
-      const color = collaborator?.color || '#FF6B6B';
-
-      sendCursorPosition(position, currentUserId.current, userName, color);
-
-    } catch (error) {
-      console.log('Cursor tracking error:', error);
-    }
-  }
+const debounce = (func, delay) => {
+  let timeoutId;
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func(...args), delay);
+  };
 };
 
-// Replace your existing updateVisualCursors function:
+// 2. Replace your current handleCursorChange with this
+const handleCursorChange = debounce((editor) => {
+  if (isUpdatingFromWS.current || !id || !isConnected) return;
+  
+  try {
+    const selection = editor.selection;
+    const range = selection.getRng();
+    
+    // Only send cursor updates, not content
+    const editorIframe = editor.iframeElement;
+    const editorRect = editorIframe.getBoundingClientRect();
+    const rangeRect = range.getBoundingClientRect();
+    
+    // Calculate relative position
+    const position = {
+      top: rangeRect.top - editorRect.top,
+      left: rangeRect.left - editorRect.left
+    };
+    
+    // Get user info
+    const userName = collaborators.find(c => 
+      c.user_identifier === currentUserId.current)?.user_name || 
+      `User${currentUserId.current.slice(-5)}`;
+    const color = collaborators.find(c => 
+      c.user_identifier === currentUserId.current)?.color || '#FF6B6B';
+    
+    sendCursorPosition(position, currentUserId.current, userName, color);
+  } catch (error) {
+    console.log('Cursor tracking error:', error);
+  }
+}, 200); // 200ms debounce
+
+// 3. Replace your updateVisualCursors with this
 const updateVisualCursors = () => {
   if (!editorRef.current || !cursorOverlayRef.current) return;
-  cursorOverlayRef.current.innerHTML = '';
-
-  const editor = editorRef.current;
-  const editorBody = editor.getBody();
-  const editorRect = editorBody.getBoundingClientRect();
-
-  Object.entries(cursors).forEach(([userId, cursorData]) => {
-    try {
-      console.log('🎨 Rendering cursor for:', userId, cursorData);
-
-      const top = cursorData.position?.top || 0;
-      const left = cursorData.position?.left || 0;
-      // Create cursor element
+  
+  try {
+    cursorOverlayRef.current.innerHTML = '';
+    
+    const editor = editorRef.current;
+    const editorIframe = editor.iframeElement;
+    if (!editorIframe) return;
+    
+    const editorRect = editorIframe.getBoundingClientRect();
+    
+    Object.entries(cursors).forEach(([userId, cursorData]) => {
+      if (!cursorData.position) return;
+      
+      // Create cursor
       const cursorElement = document.createElement('div');
       cursorElement.className = 'collaborator-cursor';
       cursorElement.style.cssText = `
@@ -216,15 +227,14 @@ const updateVisualCursors = () => {
         height: 20px;
         background-color: ${cursorData.color};
         pointer-events: none;
-        z-index: 1000;
+        z-index: 9999;
+        top: ${editorRect.top + cursorData.position.top}px;
+        left: ${editorRect.left + cursorData.position.left}px;
         animation: blink 1s infinite;
-        top: ${cursorData.position?.top || 0}px;
-        left: ${cursorData.position?.left || 0}px;
       `;
-
-      // Create label element
+      
+      // Create label
       const labelElement = document.createElement('div');
-      labelElement.className = 'collaborator-cursor-label';
       labelElement.textContent = cursorData.userName;
       labelElement.style.cssText = `
         position: absolute;
@@ -235,25 +245,17 @@ const updateVisualCursors = () => {
         font-size: 11px;
         white-space: nowrap;
         pointer-events: none;
-        z-index: 1001;
-        top: ${cursorData.position?.top - 25 || -25}px;
-        left: ${cursorData.position?.left || 0}px;
+        z-index: 9999;
+        top: ${editorRect.top + cursorData.position.top - 25}px;
+        left: ${editorRect.left + cursorData.position.left}px;
       `;
-
-      // Append both to overlay
-      cursorOverlayRef.current.appendChild(cursorElement);
-      cursorOverlayRef.current.appendChild(labelElement);
-      cursorElement.style.top = `${top}px`;
-      cursorElement.style.left = `${left}px`;
-      labelElement.style.top = `${top - 25}px`;
-      labelElement.style.left = `${left}px`;
-
-      console.log('✅ Cursor rendered for:', cursorData.userName);
-
-    } catch (error) {
-      console.log('Cursor render error:', error);
-    }
-  });
+      
+      document.body.appendChild(cursorElement);
+      document.body.appendChild(labelElement);
+    });
+  } catch (error) {
+    console.log('Error rendering cursors:', error);
+  }
 };
 
   // Update cursors when state changes
@@ -584,14 +586,15 @@ const updateVisualCursors = () => {
             onInit={(evt, editor) => {
               editorRef.current = editor;
               
-              // MORE CURSOR EVENTS
+              // Fewer events to prevent loop
               editor.on('KeyUp', () => handleCursorChange(editor));
               editor.on('MouseUp', () => handleCursorChange(editor));
-              editor.on('Click', () => handleCursorChange(editor));
-
               
-              
-              console.log('🚀 TinyMCE Editor initialized with cursor tracking');
+              // Add cleanup
+              return () => {
+                document.querySelectorAll('.collaborator-cursor, .collaborator-cursor-label')
+                  .forEach(el => el.remove());
+              };
             }}
             init={{
               height: '100%',
