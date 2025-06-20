@@ -39,6 +39,7 @@ export default function TextEditor({ setSidebarOpen }) {
   const [permission, setPermission] = useState('edit');
   const [isOwner, setIsOwner] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
 
   // WebSocket without cursor handling
   const { isConnected, collaborators } = useYjs(id, editorRef);
