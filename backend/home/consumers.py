@@ -147,18 +147,6 @@ class NoteConsumer(AsyncWebsocketConsumer):
                     'sender_channel': self.channel_name
                 }
             )
-        elif message_type == 'cursor_position':
-            await self.channel_layer.group_send(
-                self.room_group_name,
-                {
-                    'type': 'cursor_update',
-                    'position': data['position'],
-                    'user_id': self.user_identifier,
-                    'user_name': self.user.username,
-                    'color': data.get('color', '#FF6B6B'),
-                    'sender_channel': self.channel_name
-                }
-            )
 
     async def content_update(self, event):
         if event['sender_channel'] != self.channel_name:
@@ -167,16 +155,6 @@ class NoteConsumer(AsyncWebsocketConsumer):
                 'content': event['content'],
                 'user_id': event['user_id'],
                 'user_name': event['user_name']
-            }))
-
-    async def cursor_update(self, event):
-        if event['sender_channel'] != self.channel_name:
-            await self.send(text_data=json.dumps({
-                'type': 'cursor_position',
-                'position': event['position'],
-                'user_id': event['user_id'],
-                'user_name': event['user_name'],
-                'color': event['color']
             }))
 
     async def collaborators_update(self, event):

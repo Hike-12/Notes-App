@@ -28,7 +28,6 @@ export default function TextEditor({ setSidebarOpen }) {
   const editorRef = useRef(null);
   const isUpdatingFromWS = useRef(false);
   const currentUserId = useRef(`user_${Math.random().toString(36).substr(2, 9)}`);
-  const cursorOverlayRef = useRef(null);
 
   const [content, setContent] = useState('');
   const [isNewNote, setIsNewNote] = useState(false);
@@ -38,14 +37,12 @@ export default function TextEditor({ setSidebarOpen }) {
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [collaborators, setCollaborators] = useState([]);
-  const [cursors, setCursors] = useState({});
-  const [shareModalOpen, setShareModalOpen] = useState(false);
   const [permission, setPermission] = useState('edit');
   const [isOwner, setIsOwner] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  // Enhanced WebSocket with FIXED cursor handling
-  const { isConnected, sendContentChange, sendCursorPosition } = useWebSocket(
+  // WebSocket without cursor handling
+  const { isConnected, sendContentChange } = useWebSocket(
     id,
     (newContent, userId) => {
       if (userId !== currentUserId.current && editorRef.current) {
@@ -59,39 +56,6 @@ export default function TextEditor({ setSidebarOpen }) {
     },
     (collaboratorsList) => {
       setCollaborators(collaboratorsList);
-    },
-    (position, userId, userName, color) => {
-      console.log('🎯 Received cursor update:', { userId, userName, color, position });
-      if (userId !== currentUserId.current) {
-        setCursors(prev => {
-          const updated = {
-            ...prev,
-            [userId]: { 
-              position, 
-              userName, 
-              color,
-              timestamp: Date.now()
-            }
-          };
-          console.log('📍 Updated cursors state:', updated);
-          return updated;
-        });
-        
-        // Update visual cursors
-        setTimeout(() => updateVisualCursors(), 100);
-        
-        // Clean up old cursors after 15 seconds
-        setTimeout(() => {
-          setCursors(prev => {
-            const updated = { ...prev };
-            if (updated[userId] && Date.now() - updated[userId].timestamp > 15000) {
-              console.log('🧹 Cleaning up old cursor:', userId);
-              delete updated[userId];
-            }
-            return updated;
-          });
-        }, 15000);
-      }
     }
   );
 
@@ -160,108 +124,6 @@ export default function TextEditor({ setSidebarOpen }) {
       }
     }
   };
-
-  // SIMPLIFIED CURSOR HANDLING
-const debounce = (func, delay) => {
-  let timeoutId;
-  return (...args) => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => func(...args), delay);
-  };
-};
-
-// 2. Replace your current handleCursorChange with this
-const handleCursorChange = debounce((editor) => {
-  if (isUpdatingFromWS.current || !id || !isConnected) return;
-  
-  try {
-    const selection = editor.selection;
-    const range = selection.getRng();
-    
-    // Only send cursor updates, not content
-    const editorIframe = editor.iframeElement;
-    const editorRect = editorIframe.getBoundingClientRect();
-    const rangeRect = range.getBoundingClientRect();
-    
-    // Calculate relative position
-    const position = {
-      top: rangeRect.top - editorRect.top,
-      left: rangeRect.left - editorRect.left
-    };
-    
-    // Get user info
-    const userName = collaborators.find(c => 
-      c.user_identifier === currentUserId.current)?.user_name || 
-      `User${currentUserId.current.slice(-5)}`;
-    const color = collaborators.find(c => 
-      c.user_identifier === currentUserId.current)?.color || '#FF6B6B';
-    
-    sendCursorPosition(position, currentUserId.current, userName, color);
-  } catch (error) {
-    console.log('Cursor tracking error:', error);
-  }
-}, 200); // 200ms debounce
-
-// 3. Replace your updateVisualCursors with this
-const updateVisualCursors = () => {
-  if (!editorRef.current || !cursorOverlayRef.current) return;
-  
-  try {
-    cursorOverlayRef.current.innerHTML = '';
-    
-    const editor = editorRef.current;
-    const editorIframe = editor.iframeElement;
-    if (!editorIframe) return;
-    
-    const editorRect = editorIframe.getBoundingClientRect();
-    
-    Object.entries(cursors).forEach(([userId, cursorData]) => {
-      if (!cursorData.position) return;
-      
-      // Create cursor
-      const cursorElement = document.createElement('div');
-      cursorElement.className = 'collaborator-cursor';
-      cursorElement.style.cssText = `
-        position: absolute;
-        width: 2px;
-        height: 20px;
-        background-color: ${cursorData.color};
-        pointer-events: none;
-        z-index: 9999;
-        top: ${editorRect.top + cursorData.position.top}px;
-        left: ${editorRect.left + cursorData.position.left}px;
-        animation: blink 1s infinite;
-      `;
-      
-      // Create label
-      const labelElement = document.createElement('div');
-      labelElement.textContent = cursorData.userName;
-      labelElement.style.cssText = `
-        position: absolute;
-        background-color: ${cursorData.color};
-        color: white;
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-size: 11px;
-        white-space: nowrap;
-        pointer-events: none;
-        z-index: 9999;
-        top: ${editorRect.top + cursorData.position.top - 25}px;
-        left: ${editorRect.left + cursorData.position.left}px;
-      `;
-      
-      document.body.appendChild(cursorElement);
-      document.body.appendChild(labelElement);
-    });
-  } catch (error) {
-    console.log('Error rendering cursors:', error);
-  }
-};
-
-  // Update cursors when state changes
-  useEffect(() => {
-    updateVisualCursors();
-  }, [cursors]);
 
   // All your existing handlers remain the same...
   const handleDelete = () => {
@@ -407,7 +269,7 @@ const updateVisualCursors = () => {
         </div>
       )}
 
-      {/* Header - Same as before but with cursor count */}
+      {/* Header */}
       <div className="bg-white/30 backdrop-blur-sm border-b border-white/20 p-4 flex-shrink-0 relative z-30">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-3 min-w-0 flex-1">
@@ -451,16 +313,6 @@ const updateVisualCursors = () => {
             <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
             <span>•</span>
             <span>{collaborators.length} collaborators</span>
-            
-            {/* CURSOR COUNT DEBUG */}
-            {Object.keys(cursors).length > 0 && (
-              <>
-                <span>•</span>
-                <span className="text-purple-600 font-medium">
-                  👆 {Object.keys(cursors).length} active cursor{Object.keys(cursors).length !== 1 ? 's' : ''}
-                </span>
-              </>
-            )}
             
             {!isNewNote && (
               <>
@@ -513,12 +365,6 @@ const updateVisualCursors = () => {
               <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
               <span>•</span>
               <span>{collaborators.length} collaborators</span>
-              {Object.keys(cursors).length > 0 && (
-                <>
-                  <span>•</span>
-                  <span className="text-purple-600">👆 {Object.keys(cursors).length} cursors</span>
-                </>
-              )}
             </div>
 
             <div className="space-y-2">
@@ -571,45 +417,26 @@ const updateVisualCursors = () => {
         />
       )}
 
-      {/* Editor Container with SIMPLIFIED CURSOR OVERLAY */}
+      {/* Editor Container */}
       <div className="flex-1 p-4 min-h-0 overflow-hidden relative">
         <div className="w-full h-full bg-white/40 backdrop-blur-sm rounded-xl shadow-lg border border-white/20 overflow-hidden relative">
-          {/* SIMPLIFIED CURSOR OVERLAY */}
-          <div 
-            ref={cursorOverlayRef} 
-            className="fixed inset-0 pointer-events-none z-50"
-            style={{ zIndex: 9999 }}
-          />
-
           <Editor
             apiKey={import.meta.env.VITE_TINYMCE_API_KEY}
             onInit={(evt, editor) => {
               editorRef.current = editor;
-              
-              // Fewer events to prevent loop
-              editor.on('KeyUp', () => handleCursorChange(editor));
-              editor.on('MouseUp', () => handleCursorChange(editor));
-              
-              // Add cleanup
-              return () => {
-                document.querySelectorAll('.collaborator-cursor, .collaborator-cursor-label')
-                  .forEach(el => el.remove());
-              };
             }}
             init={{
               height: '100%',
               width: '100%',
               // ALL TINYMCE PLUGINS
               plugins: [
-  'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
-  'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
-  'insertdatetime', 'media', 'table', 'help', 'wordcount', 'emoticons',
-  // 'template', 'paste', 'textcolor', 'colorpicker', 'textpattern',
-  'codesample',
-  // 'hr',
-  'pagebreak', 'nonbreaking', 'save', 'autosave',
-  'directionality', 'visualchars', 'quickbars', 'importcss'
-],
+                'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+                'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+                'insertdatetime', 'media', 'table', 'help', 'wordcount', 'emoticons',
+                'codesample',
+                'pagebreak', 'nonbreaking', 'save', 'autosave',
+                'directionality', 'visualchars', 'quickbars', 'importcss'
+              ],
               toolbar: permission === 'edit' 
                 ? 'undo redo | blocks | ' +
                   'bold italic forecolor backcolor | alignleft aligncenter ' +
@@ -663,12 +490,11 @@ const updateVisualCursors = () => {
                 toolbar_mode: 'sliding',
                 menubar: false,
                 plugins: [
-    'lists', 'autolink', 'link', 'image', 'charmap',
-    'searchreplace', 'code', 'insertdatetime', 'media',
-    'table', 'emoticons',
-    // 'paste', 'textcolor',
-    'help'
-  ],
+                  'lists', 'autolink', 'link', 'image', 'charmap',
+                  'searchreplace', 'code', 'insertdatetime', 'media',
+                  'table', 'emoticons',
+                  'help'
+                ],
                 toolbar: permission === 'edit' 
                   ? 'undo redo | bold italic | alignleft aligncenter alignright | bullist numlist | link image | removeformat'
                   : false
@@ -705,18 +531,6 @@ const updateVisualCursors = () => {
         </div>
       </div>
 
-      {/* CURSOR DEBUG INFO */}
-      {Object.keys(cursors).length > 0 && (
-        <div className="fixed bottom-4 left-4 bg-black/80 text-white p-2 rounded text-xs z-50">
-          <div>🎯 Active Cursors: {Object.keys(cursors).length}</div>
-          {Object.entries(cursors).map(([userId, data]) => (
-            <div key={userId} style={{ color: data.color }}>
-              • {data.userName} ({userId.slice(-4)})
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Share Modal */}
       <ShareModal
         isOpen={shareModalOpen}
@@ -724,17 +538,6 @@ const updateVisualCursors = () => {
         note={foundNote}
         onShareUpdate={handleShareUpdate}
       />
-
-      {/* Add cursor CSS */}
-      <style jsx>{`
-        @keyframes blink {
-          0%, 50% { opacity: 1; }
-          51%, 100% { opacity: 0.3; }
-        }
-        .collaborator-cursor {
-          animation: blink 1.5s infinite;
-        }
-      `}</style>
     </div>
   );
 }

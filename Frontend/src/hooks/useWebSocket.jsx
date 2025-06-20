@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
-export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onCursorUpdate) => {
+export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate) => {
   const ws = useRef(null);
   const [isConnected, setIsConnected] = useState(false);
   const [collaborators, setCollaborators] = useState([]);
   const reconnectTimeoutRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
   const { user } = useAuth();
-  const isConnectingRef = useRef(false); // Add this to prevent multiple connections
+  const isConnectingRef = useRef(false);
 
   useEffect(() => {
     if (!noteId || !user || isConnectingRef.current) return;
@@ -53,11 +53,6 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
             setCollaborators(data.collaborators);
             if (onCollaboratorsUpdate) {
               onCollaboratorsUpdate(data.collaborators);
-            }
-            break;
-          case 'cursor_position':
-            if (onCursorUpdate) {
-              onCursorUpdate(data.position, data.user_id, data.user_name, data.color);
             }
             break;
           case 'note_saved':
@@ -115,7 +110,7 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
       
       ws.current = null;
     };
-  }, [noteId, user]); // Remove other dependencies that cause re-connections
+  }, [noteId, user]);
 
   const sendContentChange = (content, userId) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
@@ -127,22 +122,9 @@ export const useWebSocket = (noteId, onContentChange, onCollaboratorsUpdate, onC
     }
   };
 
-  const sendCursorPosition = (position, userId, userName, color) => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({
-        type: 'cursor_position',
-        position: position,
-        user_id: userId,
-        user_name: userName,
-        color: color
-      }));
-    }
-  };
-
   return {
     isConnected,
     collaborators,
-    sendContentChange,
-    sendCursorPosition
+    sendContentChange
   };
 };
