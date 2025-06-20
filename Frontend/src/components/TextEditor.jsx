@@ -163,100 +163,91 @@ export default function TextEditor({ setSidebarOpen }) {
 
   // SIMPLIFIED CURSOR HANDLING
   const handleCursorChange = (editor) => {
-    if (!isUpdatingFromWS.current && id && isConnected) {
-      try {
-        const selection = editor.selection;
-        const range = selection.getRng();
-        
-        // Get simple text-based position
-        const textContent = editor.getContent({ format: 'text' });
-        const selectedText = selection.getContent({ format: 'text' });
-        const beforeCursor = textContent.substring(0, textContent.indexOf(selectedText));
-        
-        const cursorInfo = {
-          textPosition: beforeCursor.length,
-          textContent: textContent.substring(0, 50), // First 50 chars for reference
-          timestamp: Date.now()
-        };
-        
-        // Get collaborator info
-        const collaborator = collaborators.find(c => c.user_identifier === currentUserId.current);
-        const userName = collaborator?.user_name || `User${currentUserId.current.slice(-5)}`;
-        const color = collaborator?.color || '#FF6B6B';
-        
-        console.log('📤 Sending cursor position:', { cursorInfo, userId: currentUserId.current, userName, color });
-        
-        sendCursorPosition(
-          cursorInfo, 
-          currentUserId.current, 
-          userName,
-          color
-        );
-      } catch (error) {
-        console.log('Cursor tracking error:', error);
-      }
-    }
-  };
+  if (!isUpdatingFromWS.current && id && isConnected) {
+    try {
+      const selection = editor.selection;
+      const range = selection.getRng();
 
-  // VISUAL CURSOR RENDERING - SIMPLIFIED
-  const updateVisualCursors = () => {
-    if (!editorRef.current || !cursorOverlayRef.current) return;
-    
-    // Clear existing cursors
-    cursorOverlayRef.current.innerHTML = '';
-    
-    const editor = editorRef.current;
-    const editorBody = editor.getBody();
-    const editorRect = editorBody.getBoundingClientRect();
-    
-    Object.entries(cursors).forEach(([userId, cursorData]) => {
-      try {
-        console.log('🎨 Rendering cursor for:', userId, cursorData);
-        
-        // Create cursor element
-        const cursorElement = document.createElement('div');
-        cursorElement.className = 'collaborator-cursor';
-        cursorElement.style.cssText = `
-          position: fixed;
-          width: 2px;
-          height: 20px;
-          background-color: ${cursorData.color};
-          pointer-events: none;
-          z-index: 1000;
-          animation: blink 1s infinite;
-          top: ${editorRect.top + 50}px;
-          left: ${editorRect.left + (cursorData.position?.textPosition || 0) * 8}px;
-        `;
-        
-        // Create label
-        const labelElement = document.createElement('div');
-        labelElement.className = 'collaborator-cursor-label';
-        labelElement.textContent = cursorData.userName;
-        labelElement.style.cssText = `
-          position: fixed;
-          background-color: ${cursorData.color};
-          color: white;
-          padding: 2px 6px;
-          border-radius: 3px;
-          font-size: 11px;
-          white-space: nowrap;
-          pointer-events: none;
-          z-index: 1001;
-          top: ${editorRect.top + 25}px;
-          left: ${editorRect.left + (cursorData.position?.textPosition || 0) * 8}px;
-        `;
-        
-        // Append to overlay
-        cursorOverlayRef.current.appendChild(cursorElement);
-        cursorOverlayRef.current.appendChild(labelElement);
-        
-        console.log('✅ Cursor rendered for:', cursorData.userName);
-        
-      } catch (error) {
-        console.log('Cursor render error:', error);
-      }
-    });
-  };
+      // Actual caret rectangle
+      const rangeRect = range.getBoundingClientRect();
+      const bodyRect = editor.getBody().getBoundingClientRect();
+
+      const position = {
+        top: rangeRect.top - bodyRect.top + editor.getDoc().documentElement.scrollTop,
+        left: rangeRect.left - bodyRect.left + editor.getDoc().documentElement.scrollLeft
+      };
+
+      // Get collaborator info
+      const collaborator = collaborators.find(c => c.user_identifier === currentUserId.current);
+      const userName = collaborator?.user_name || `User${currentUserId.current.slice(-5)}`;
+      const color = collaborator?.color || '#FF6B6B';
+
+      console.log('📤 Sending cursor position:', { position, userId: currentUserId.current, userName, color });
+      sendCursorPosition(position, currentUserId.current, userName, color);
+
+    } catch (error) {
+      console.log('Cursor tracking error:', error);
+    }
+  }
+};
+
+// Replace your existing updateVisualCursors function:
+const updateVisualCursors = () => {
+  if (!editorRef.current || !cursorOverlayRef.current) return;
+  cursorOverlayRef.current.innerHTML = '';
+
+  const editor = editorRef.current;
+  const editorBody = editor.getBody();
+  const editorRect = editorBody.getBoundingClientRect();
+
+  Object.entries(cursors).forEach(([userId, cursorData]) => {
+    try {
+      console.log('🎨 Rendering cursor for:', userId, cursorData);
+
+      // Create cursor element
+      const cursorElement = document.createElement('div');
+      cursorElement.className = 'collaborator-cursor';
+      cursorElement.style.cssText = `
+        position: absolute;
+        width: 2px;
+        height: 20px;
+        background-color: ${cursorData.color};
+        pointer-events: none;
+        z-index: 1000;
+        animation: blink 1s infinite;
+        top: ${cursorData.position?.top || 0}px;
+        left: ${cursorData.position?.left || 0}px;
+      `;
+
+      // Create label element
+      const labelElement = document.createElement('div');
+      labelElement.className = 'collaborator-cursor-label';
+      labelElement.textContent = cursorData.userName;
+      labelElement.style.cssText = `
+        position: absolute;
+        background-color: ${cursorData.color};
+        color: white;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 1001;
+        top: ${cursorData.position?.top - 25 || -25}px;
+        left: ${cursorData.position?.left || 0}px;
+      `;
+
+      // Append both to overlay
+      cursorOverlayRef.current.appendChild(cursorElement);
+      cursorOverlayRef.current.appendChild(labelElement);
+
+      console.log('✅ Cursor rendered for:', cursorData.userName);
+
+    } catch (error) {
+      console.log('Cursor render error:', error);
+    }
+  });
+};
 
   // Update cursors when state changes
   useEffect(() => {
@@ -587,12 +578,11 @@ export default function TextEditor({ setSidebarOpen }) {
               editorRef.current = editor;
               
               // MORE CURSOR EVENTS
-              editor.on('NodeChange', () => handleCursorChange(editor));
               editor.on('KeyUp', () => handleCursorChange(editor));
               editor.on('MouseUp', () => handleCursorChange(editor));
-              editor.on('SelectionChange', () => handleCursorChange(editor));
               editor.on('Click', () => handleCursorChange(editor));
-              editor.on('KeyDown', () => setTimeout(() => handleCursorChange(editor), 10));
+
+              
               
               console.log('🚀 TinyMCE Editor initialized with cursor tracking');
             }}
@@ -601,13 +591,15 @@ export default function TextEditor({ setSidebarOpen }) {
               width: '100%',
               // ALL TINYMCE PLUGINS
               plugins: [
-                'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
-                'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
-                'insertdatetime', 'media', 'table', 'help', 'wordcount', 'emoticons',
-                'template', 'paste', 'textcolor', 'colorpicker', 'textpattern',
-                'codesample', 'hr', 'pagebreak', 'nonbreaking', 'save', 'autosave',
-                'directionality', 'visualchars', 'quickbars', 'importcss'
-              ],
+  'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+  'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+  'insertdatetime', 'media', 'table', 'help', 'wordcount', 'emoticons',
+  // 'template', 'paste', 'textcolor', 'colorpicker', 'textpattern',
+  'codesample',
+  // 'hr',
+  'pagebreak', 'nonbreaking', 'save', 'autosave',
+  'directionality', 'visualchars', 'quickbars', 'importcss'
+],
               toolbar: permission === 'edit' 
                 ? 'undo redo | blocks | ' +
                   'bold italic forecolor backcolor | alignleft aligncenter ' +
@@ -661,10 +653,12 @@ export default function TextEditor({ setSidebarOpen }) {
                 toolbar_mode: 'sliding',
                 menubar: false,
                 plugins: [
-                  'lists', 'autolink', 'link', 'image', 'charmap',
-                  'searchreplace', 'code', 'insertdatetime', 'media',
-                  'table', 'emoticons', 'paste', 'textcolor', 'help'
-                ],
+    'lists', 'autolink', 'link', 'image', 'charmap',
+    'searchreplace', 'code', 'insertdatetime', 'media',
+    'table', 'emoticons',
+    // 'paste', 'textcolor',
+    'help'
+  ],
                 toolbar: permission === 'edit' 
                   ? 'undo redo | bold italic | alignleft aligncenter alignright | bullist numlist | link image | removeformat'
                   : false
