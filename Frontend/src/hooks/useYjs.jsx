@@ -31,7 +31,7 @@ export const useYjs = (noteId, editorRef) => {
     
     // Connect to our custom Yjs WebSocket endpoint
     const provider = new WebsocketProvider(
-      `${wsProtocol}://${wsHost}/ws/yjs`, 
+      `${wsProtocol}://${wsHost}/ws/yjs/`, 
       noteId, 
       ydoc,
       { params: { user_id: user.id } } // Use user_id to match our backend
