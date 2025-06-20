@@ -23,13 +23,12 @@ const removeTitleFromContent = (htmlContent) => {
 };
 
 export default function TextEditor({ setSidebarOpen }) {
-  // All your existing state...
   const { id } = useParams();
   const navigate = useNavigate();
   const editorRef = useRef(null);
   const isUpdatingFromWS = useRef(false);
   const currentUserId = useRef(`user_${Math.random().toString(36).substr(2, 9)}`);
-  const cursorsContainerRef = useRef(null); // Add this for cursor positioning
+  const cursorOverlayRef = useRef(null);
 
   const [content, setContent] = useState('');
   const [isNewNote, setIsNewNote] = useState(false);
@@ -45,7 +44,7 @@ export default function TextEditor({ setSidebarOpen }) {
   const [isOwner, setIsOwner] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  // Enhanced WebSocket with better cursor handling
+  // Enhanced WebSocket with FIXED cursor handling
   const { isConnected, sendContentChange, sendCursorPosition } = useWebSocket(
     id,
     (newContent, userId) => {
@@ -62,32 +61,41 @@ export default function TextEditor({ setSidebarOpen }) {
       setCollaborators(collaboratorsList);
     },
     (position, userId, userName, color) => {
+      console.log('🎯 Received cursor update:', { userId, userName, color, position });
       if (userId !== currentUserId.current) {
-        setCursors(prev => ({
-          ...prev,
-          [userId]: { 
-            position, 
-            userName, 
-            color,
-            timestamp: Date.now() // Add timestamp for cleanup
-          }
-        }));
+        setCursors(prev => {
+          const updated = {
+            ...prev,
+            [userId]: { 
+              position, 
+              userName, 
+              color,
+              timestamp: Date.now()
+            }
+          };
+          console.log('📍 Updated cursors state:', updated);
+          return updated;
+        });
         
-        // Clean up old cursors after 10 seconds of inactivity
+        // Update visual cursors
+        setTimeout(() => updateVisualCursors(), 100);
+        
+        // Clean up old cursors after 15 seconds
         setTimeout(() => {
           setCursors(prev => {
             const updated = { ...prev };
-            if (updated[userId] && Date.now() - updated[userId].timestamp > 10000) {
+            if (updated[userId] && Date.now() - updated[userId].timestamp > 15000) {
+              console.log('🧹 Cleaning up old cursor:', userId);
               delete updated[userId];
             }
             return updated;
           });
-        }, 10000);
+        }, 15000);
       }
     }
   );
 
-  // All your existing useEffect and handlers remain the same...
+  // All your existing useEffect code...
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -153,26 +161,30 @@ export default function TextEditor({ setSidebarOpen }) {
     }
   };
 
-  // ENHANCED CURSOR HANDLING
+  // SIMPLIFIED CURSOR HANDLING
   const handleCursorChange = (editor) => {
     if (!isUpdatingFromWS.current && id && isConnected) {
       try {
         const selection = editor.selection;
         const range = selection.getRng();
         
-        // Get more precise cursor position
-        const bookmark = selection.getBookmark(2, true);
+        // Get simple text-based position
+        const textContent = editor.getContent({ format: 'text' });
+        const selectedText = selection.getContent({ format: 'text' });
+        const beforeCursor = textContent.substring(0, textContent.indexOf(selectedText));
+        
         const cursorInfo = {
-          bookmark: bookmark,
-          startOffset: range.startOffset,
-          endOffset: range.endOffset,
-          collapsed: range.collapsed
+          textPosition: beforeCursor.length,
+          textContent: textContent.substring(0, 50), // First 50 chars for reference
+          timestamp: Date.now()
         };
         
         // Get collaborator info
         const collaborator = collaborators.find(c => c.user_identifier === currentUserId.current);
         const userName = collaborator?.user_name || `User${currentUserId.current.slice(-5)}`;
         const color = collaborator?.color || '#FF6B6B';
+        
+        console.log('📤 Sending cursor position:', { cursorInfo, userId: currentUserId.current, userName, color });
         
         sendCursorPosition(
           cursorInfo, 
@@ -186,58 +198,72 @@ export default function TextEditor({ setSidebarOpen }) {
     }
   };
 
-  // VISUAL CURSOR RENDERING
-  const renderOtherCursors = () => {
-    if (!editorRef.current) return null;
+  // VISUAL CURSOR RENDERING - SIMPLIFIED
+  const updateVisualCursors = () => {
+    if (!editorRef.current || !cursorOverlayRef.current) return;
     
-    return Object.entries(cursors).map(([userId, cursorData]) => {
+    // Clear existing cursors
+    cursorOverlayRef.current.innerHTML = '';
+    
+    const editor = editorRef.current;
+    const editorBody = editor.getBody();
+    const editorRect = editorBody.getBoundingClientRect();
+    
+    Object.entries(cursors).forEach(([userId, cursorData]) => {
       try {
-        const editor = editorRef.current;
-        const doc = editor.getDoc();
+        console.log('🎨 Rendering cursor for:', userId, cursorData);
         
-        // Try to restore cursor position using bookmark
-        if (cursorData.position?.bookmark) {
-          const selection = editor.selection;
-          selection.moveToBookmark(cursorData.position.bookmark);
-          const range = selection.getRng();
-          
-          // Get the visual position
-          const rect = range.getBoundingClientRect();
-          const editorRect = editor.getContainer().getBoundingClientRect();
-          
-          if (rect.top > 0 && rect.left > 0) {
-            return (
-              <div key={userId} className="absolute pointer-events-none z-50">
-                <div
-                  className="absolute w-0.5 h-5 animate-pulse"
-                  style={{
-                    backgroundColor: cursorData.color,
-                    left: rect.left - editorRect.left,
-                    top: rect.top - editorRect.top + 20,
-                  }}
-                />
-                <div
-                  className="absolute px-2 py-1 text-xs text-white rounded-md shadow-lg whitespace-nowrap"
-                  style={{
-                    backgroundColor: cursorData.color,
-                    left: rect.left - editorRect.left,
-                    top: rect.top - editorRect.top - 5,
-                  }}
-                >
-                  {cursorData.userName}
-                </div>
-              </div>
-            );
-          }
-        }
+        // Create cursor element
+        const cursorElement = document.createElement('div');
+        cursorElement.className = 'collaborator-cursor';
+        cursorElement.style.cssText = `
+          position: fixed;
+          width: 2px;
+          height: 20px;
+          background-color: ${cursorData.color};
+          pointer-events: none;
+          z-index: 1000;
+          animation: blink 1s infinite;
+          top: ${editorRect.top + 50}px;
+          left: ${editorRect.left + (cursorData.position?.textPosition || 0) * 8}px;
+        `;
+        
+        // Create label
+        const labelElement = document.createElement('div');
+        labelElement.className = 'collaborator-cursor-label';
+        labelElement.textContent = cursorData.userName;
+        labelElement.style.cssText = `
+          position: fixed;
+          background-color: ${cursorData.color};
+          color: white;
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-size: 11px;
+          white-space: nowrap;
+          pointer-events: none;
+          z-index: 1001;
+          top: ${editorRect.top + 25}px;
+          left: ${editorRect.left + (cursorData.position?.textPosition || 0) * 8}px;
+        `;
+        
+        // Append to overlay
+        cursorOverlayRef.current.appendChild(cursorElement);
+        cursorOverlayRef.current.appendChild(labelElement);
+        
+        console.log('✅ Cursor rendered for:', cursorData.userName);
+        
       } catch (error) {
-        console.log('Render cursor error:', error);
+        console.log('Cursor render error:', error);
       }
-      return null;
     });
   };
 
-  // All your existing handlers (save, delete, share) remain the same...
+  // Update cursors when state changes
+  useEffect(() => {
+    updateVisualCursors();
+  }, [cursors]);
+
+  // All your existing handlers remain the same...
   const handleDelete = () => {
     if (!foundNote || isNewNote) {
       console.warn('No note to delete or it is a new note.');
@@ -381,11 +407,9 @@ export default function TextEditor({ setSidebarOpen }) {
         </div>
       )}
 
-      {/* Header - All your existing header code remains the same... */}
+      {/* Header - Same as before but with cursor count */}
       <div className="bg-white/30 backdrop-blur-sm border-b border-white/20 p-4 flex-shrink-0 relative z-30">
-        {/* Top row */}
         <div className="flex items-center justify-between mb-2">
-          {/* Left: Menu + Title */}
           <div className="flex items-center space-x-3 min-w-0 flex-1">
             <button
               onClick={() => setSidebarOpen && setSidebarOpen(true)}
@@ -410,7 +434,6 @@ export default function TextEditor({ setSidebarOpen }) {
             </h1>
           </div>
 
-          {/* Right: Mobile menu button */}
           <button
             onClick={() => setShowMobileMenu(!showMobileMenu)}
             className="lg:hidden p-2 rounded-lg bg-white/40 hover:bg-white/60 transition-colors relative z-40"
@@ -421,7 +444,7 @@ export default function TextEditor({ setSidebarOpen }) {
           </button>
         </div>
 
-        {/* Desktop status and buttons */}
+        {/* Desktop status */}
         <div className="hidden lg:flex items-center justify-between">
           <div className="flex items-center space-x-2 text-sm text-[#8A784E]">
             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
@@ -429,12 +452,12 @@ export default function TextEditor({ setSidebarOpen }) {
             <span>•</span>
             <span>{collaborators.length} collaborators</span>
             
-            {/* Active cursors indicator */}
+            {/* CURSOR COUNT DEBUG */}
             {Object.keys(cursors).length > 0 && (
               <>
                 <span>•</span>
-                <span className="text-blue-600 font-medium">
-                  {Object.keys(cursors).length} active cursor{Object.keys(cursors).length !== 1 ? 's' : ''}
+                <span className="text-purple-600 font-medium">
+                  👆 {Object.keys(cursors).length} active cursor{Object.keys(cursors).length !== 1 ? 's' : ''}
                 </span>
               </>
             )}
@@ -482,7 +505,7 @@ export default function TextEditor({ setSidebarOpen }) {
           </div>
         </div>
 
-        {/* Mobile menu - same as before */}
+        {/* Mobile menu */}
         {showMobileMenu && (
           <div className="lg:hidden absolute top-full left-4 right-4 mt-2 p-3 bg-white/95 backdrop-blur-sm rounded-lg shadow-xl border border-white/30 z-50">
             <div className="flex items-center space-x-2 text-sm text-[#8A784E] mb-3">
@@ -493,7 +516,7 @@ export default function TextEditor({ setSidebarOpen }) {
               {Object.keys(cursors).length > 0 && (
                 <>
                   <span>•</span>
-                  <span className="text-blue-600">{Object.keys(cursors).length} cursors</span>
+                  <span className="text-purple-600">👆 {Object.keys(cursors).length} cursors</span>
                 </>
               )}
             </div>
@@ -548,22 +571,30 @@ export default function TextEditor({ setSidebarOpen }) {
         />
       )}
 
-      {/* Editor Container with CURSOR OVERLAY */}
+      {/* Editor Container with SIMPLIFIED CURSOR OVERLAY */}
       <div className="flex-1 p-4 min-h-0 overflow-hidden relative">
         <div className="w-full h-full bg-white/40 backdrop-blur-sm rounded-xl shadow-lg border border-white/20 overflow-hidden relative">
-          {/* Cursors overlay container */}
-          <div ref={cursorsContainerRef} className="absolute inset-0 pointer-events-none z-40">
-            {renderOtherCursors()}
-          </div>
+          {/* SIMPLIFIED CURSOR OVERLAY */}
+          <div 
+            ref={cursorOverlayRef} 
+            className="fixed inset-0 pointer-events-none z-50"
+            style={{ zIndex: 9999 }}
+          />
 
           <Editor
             apiKey={import.meta.env.VITE_TINYMCE_API_KEY}
             onInit={(evt, editor) => {
               editorRef.current = editor;
+              
+              // MORE CURSOR EVENTS
               editor.on('NodeChange', () => handleCursorChange(editor));
               editor.on('KeyUp', () => handleCursorChange(editor));
               editor.on('MouseUp', () => handleCursorChange(editor));
               editor.on('SelectionChange', () => handleCursorChange(editor));
+              editor.on('Click', () => handleCursorChange(editor));
+              editor.on('KeyDown', () => setTimeout(() => handleCursorChange(editor), 10));
+              
+              console.log('🚀 TinyMCE Editor initialized with cursor tracking');
             }}
             init={{
               height: '100%',
@@ -577,7 +608,6 @@ export default function TextEditor({ setSidebarOpen }) {
                 'codesample', 'hr', 'pagebreak', 'nonbreaking', 'save', 'autosave',
                 'directionality', 'visualchars', 'quickbars', 'importcss'
               ],
-              // FULL TOOLBAR WITH ALL FEATURES
               toolbar: permission === 'edit' 
                 ? 'undo redo | blocks | ' +
                   'bold italic forecolor backcolor | alignleft aligncenter ' +
@@ -601,7 +631,6 @@ export default function TextEditor({ setSidebarOpen }) {
               paste_data_images: true,
               automatic_uploads: true,
               file_picker_types: 'image',
-              // Enhanced content style with cursor support
               content_style: `
                 body { 
                   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
@@ -621,30 +650,6 @@ export default function TextEditor({ setSidebarOpen }) {
                   margin: 24px 0 12px 0;
                   font-weight: 600;
                 }
-                .collaborator-cursor {
-                  position: absolute;
-                  width: 2px;
-                  height: 20px;
-                  pointer-events: none;
-                  z-index: 1000;
-                  animation: blink 1s infinite;
-                }
-                .collaborator-cursor-label {
-                  position: absolute;
-                  top: -25px;
-                  left: 0;
-                  background: rgba(0,0,0,0.8);
-                  color: white;
-                  padding: 2px 6px;
-                  border-radius: 3px;
-                  font-size: 12px;
-                  white-space: nowrap;
-                  pointer-events: none;
-                }
-                @keyframes blink {
-                  0%, 50% { opacity: 1; }
-                  51%, 100% { opacity: 0; }
-                }
                 @media (max-width: 768px) {
                   body {
                     padding: 12px;
@@ -652,7 +657,6 @@ export default function TextEditor({ setSidebarOpen }) {
                   }
                 }
               `,
-              // MOBILE SPECIFIC SETTINGS
               mobile: {
                 toolbar_mode: 'sliding',
                 menubar: false,
@@ -668,7 +672,6 @@ export default function TextEditor({ setSidebarOpen }) {
               statusbar: false,
               resize: false,
               auto_focus: false,
-              // ADVANCED FEATURES
               save_onsavecallback: () => {
                 if (permission === 'edit') {
                   handleSave();
@@ -679,13 +682,12 @@ export default function TextEditor({ setSidebarOpen }) {
               autosave_prefix: 'scribe-autosave-{path}{query}-{id}-',
               autosave_restore_when_empty: false,
               autosave_retention: '2m',
-              // SETUP FUNCTION
               setup: function(editor) {
                 editor.on('init', function() {
                   editor.getContainer().style.border = 'none';
+                  console.log('📝 Editor setup complete');
                 });
                 
-                // Custom keyboard shortcuts
                 editor.addShortcut('ctrl+s', 'Save note', () => {
                   if (permission === 'edit') {
                     handleSave();
@@ -699,6 +701,18 @@ export default function TextEditor({ setSidebarOpen }) {
         </div>
       </div>
 
+      {/* CURSOR DEBUG INFO */}
+      {Object.keys(cursors).length > 0 && (
+        <div className="fixed bottom-4 left-4 bg-black/80 text-white p-2 rounded text-xs z-50">
+          <div>🎯 Active Cursors: {Object.keys(cursors).length}</div>
+          {Object.entries(cursors).map(([userId, data]) => (
+            <div key={userId} style={{ color: data.color }}>
+              • {data.userName} ({userId.slice(-4)})
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Share Modal */}
       <ShareModal
         isOpen={shareModalOpen}
@@ -706,6 +720,17 @@ export default function TextEditor({ setSidebarOpen }) {
         note={foundNote}
         onShareUpdate={handleShareUpdate}
       />
+
+      {/* Add cursor CSS */}
+      <style jsx>{`
+        @keyframes blink {
+          0%, 50% { opacity: 1; }
+          51%, 100% { opacity: 0.3; }
+        }
+        .collaborator-cursor {
+          animation: blink 1.5s infinite;
+        }
+      `}</style>
     </div>
   );
 }
