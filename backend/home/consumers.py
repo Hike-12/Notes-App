@@ -19,8 +19,20 @@ class YjsWebsocketConsumer(AsyncWebsocketConsumer):
         query_params = parse_qs(query_string)
         user_id = query_params.get('user_id', [None])[0]
         
+        # Strip trailing slash if present
+        if user_id and user_id.endswith('/'):
+            user_id = user_id.rstrip('/')
+        
         if not user_id:
             print("❌ No user_id provided in Yjs WebSocket connection")
+            await self.close(code=4001)
+            return
+        
+        # Convert to integer
+        try:
+            user_id = int(user_id)
+        except (ValueError, TypeError):
+            print(f"❌ Invalid user_id format: {user_id}")
             await self.close(code=4001)
             return
         
