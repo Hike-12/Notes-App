@@ -67,69 +67,87 @@ export class TinyMCEBinding {
   
   // Apply plain text to Yjs (no HTML)
   applyTextToYjs(newTextContent) {
-    this.isSyncing = true;
-    
-    try {
-      const oldContent = this.ytext.toString();
-      
-      // Only update if content actually changed
-      if (oldContent !== newTextContent) {
-        // Simple replacement to avoid complex diff issues
-        this.ytext.delete(0, this.ytext.length);
-        if (newTextContent) {
-          this.ytext.insert(0, newTextContent);
+  this.isSyncing = true;
+  try {
+    const oldContent = this.ytext.toString();
+    if (oldContent !== newTextContent) {
+      // Character-level diff
+      const ops = this.getDiffOps(oldContent, newTextContent);
+      // Apply in reverse so offsets remain valid
+      for (let i = ops.length - 1; i >= 0; i--) {
+        const op = ops[i];
+        if (op.type === 'insert') {
+          this.ytext.insert(op.pos, op.text);
+        } else if (op.type === 'delete') {
+          this.ytext.delete(op.pos, op.count);
         }
-        
-        this.lastContent = newTextContent;
       }
-      
-      this.updateCursorPosition();
-    } catch (error) {
-      console.warn('Error applying text to Yjs:', error);
+      this.lastContent = newTextContent;
     }
-    
-    this.isSyncing = false;
+    this.updateCursorPosition();
+  } catch (error) {
+    console.warn('Error applying text to Yjs:', error);
   }
-  
-  // Apply Yjs changes to TinyMCE as formatted text
-  applyYjsChangesToEditor(event) {
-    this.isSyncing = true;
+  this.isSyncing = false;
+}
+
+applyYjsChangesToEditor() {
+  this.isSyncing = true;
+  try {
+    const newTextContent = this.ytext.toString();
+    const currentText = this.editor.getContent({ format: 'text' });
     
-    try {
-      const newTextContent = this.ytext.toString();
-      const currentPlainText = this.editor.getContent({ format: 'text' });
-      
-      // Only update if content actually changed
-      if (newTextContent !== currentPlainText && newTextContent !== this.lastContent) {
-        // Save cursor position
-        const selection = this.editor.selection;
-        const bookmark = selection ? selection.getBookmark(2) : null;
-        
-        // Convert plain text to basic HTML paragraphs
-        const formattedContent = this.convertTextToHTML(newTextContent);
-        
-        // Update content
-        this.editor.setContent(formattedContent);
-        
-        // Restore cursor position if possible
-        if (bookmark && selection) {
-          try {
-            selection.moveToBookmark(bookmark);
-          } catch (e) {
-            // If bookmark restoration fails, place cursor at end
-            this.editor.selection.select(this.editor.getBody(), true);
-            this.editor.selection.collapse(false);
-          }
+    // Only update if text actually changed
+    if (newTextContent !== currentText && newTextContent !== this.lastContent) {
+      const bookmark = this.editor.selection?.getBookmark(2) || null;
+      const formattedHTML = this.convertTextToHTML(newTextContent);
+      this.editor.setContent(formattedHTML);
+      if (bookmark) {
+        try {
+          this.editor.selection.moveToBookmark(bookmark);
+        } catch {
+          // If restoring fails, place cursor at end
+          this.editor.selection.select(this.editor.getBody(), true);
+          this.editor.selection.collapse(false);
         }
-        
-        this.lastContent = newTextContent;
       }
-    } catch (error) {
-      console.warn('Error applying Yjs changes:', error);
+      this.lastContent = newTextContent;
     }
-    
-    this.isSyncing = false;
+  } catch (error) {
+    console.warn('Error applying Yjs changes:', error);
   }
+  this.isSyncing = false;
+}
+
+// Simple character-level diff
+getDiffOps(oldStr, newStr) {
+  const ops = [];
+  let iOld = 0, iNew = 0;
+  while (iOld < oldStr.length || iNew < newStr.length) {
+    // Same character
+    if (oldStr[iOld] === newStr[iNew]) {
+      iOld++;
+      iNew++;
+      continue;
+    }
+    // If we've reached the end of oldStr, insert what's left of newStr
+    if (iOld >= oldStr.length) {
+      ops.push({ type: 'insert', pos: iOld, text: newStr.slice(iNew) });
+      break;
+    }
+    // If we've reached the end of newStr, delete what's left of oldStr
+    if (iNew >= newStr.length) {
+      ops.push({ type: 'delete', pos: iOld, count: oldStr.length - iOld });
+      break;
+    }
+    // Characters differ
+    ops.push({ type: 'delete', pos: iOld, count: 1 });
+    ops.push({ type: 'insert', pos: iOld, text: newStr[iNew] });
+    iOld++;
+    iNew++;
+  }
+  return ops;
+}
   
   // Convert plain text to basic HTML
   convertTextToHTML(plainText) {
