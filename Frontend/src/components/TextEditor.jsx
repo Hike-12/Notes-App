@@ -28,6 +28,7 @@ export default function TextEditor({ setSidebarOpen }) {
   const editorRef = useRef(null);
   const isUpdatingFromWS = useRef(false);
   const currentUserId = useRef(`user_${Math.random().toString(36).substr(2, 9)}`);
+  const editorInitialized = useRef(false);
 
   const [content, setContent] = useState('');
   const [isNewNote, setIsNewNote] = useState(false);
@@ -42,8 +43,26 @@ export default function TextEditor({ setSidebarOpen }) {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [collaborators, setCollaborators] = useState([]);
 
-  // WebSocket without cursor handling
-  const { isConnected, collaborators: yjsCollaborators } = useYjs(id, editorRef);
+
+// Initialize Yjs only after editor is ready and stable
+useEffect(() => {
+  if (editorRef.current && !editorInitialized.current && id) {
+    editorInitialized.current = true;
+    
+    // Small delay to ensure editor is fully initialized
+    setTimeout(() => {
+      console.log('🚀 Editor ready, initializing Yjs...');
+    }, 100);
+  }
+}, [editorRef.current, id]);
+
+// Move useYjs outside of useEffect and make it conditional
+const yjsEnabled = editorRef.current && editorInitialized.current && id;
+const { isConnected, collaborators: yjsCollaborators } = useYjs(
+  yjsEnabled ? id : null, 
+  editorRef
+);
+
 
   // All your existing useEffect code...
   useEffect(() => {
@@ -402,6 +421,7 @@ export default function TextEditor({ setSidebarOpen }) {
       <div className="flex-1 p-4 min-h-0 overflow-hidden relative">
         <div className="w-full h-full bg-white/40 backdrop-blur-sm rounded-xl shadow-lg border border-white/20 overflow-hidden relative">
           <Editor
+            key={id || 'new-note'}
             apiKey={import.meta.env.VITE_TINYMCE_API_KEY}
             onInit={(evt, editor) => {
               editorRef.current = editor;
@@ -409,6 +429,10 @@ export default function TextEditor({ setSidebarOpen }) {
             init={{
               height: '100%',
               width: '100%',
+              typing_speed: 300,
+              browser_spellcheck: false,
+              gecko_spellcheck: false,
+              entity_encoding: 'raw',
               // ALL TINYMCE PLUGINS
               plugins: [
                 'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
