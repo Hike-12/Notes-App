@@ -14,19 +14,46 @@ class YjsWebsocketConsumer(AsyncWebsocketConsumer):
         self.note_id = self.scope['url_route']['kwargs']['note_id']
         self.room_group_name = f'yjs_note_{self.note_id}'
         
-        # Get user from query parameters
-        query_string = self.scope.get('query_string', b'').decode()
-        query_params = parse_qs(query_string)
-        user_id = query_params.get('user_id', [None])[0]
+        # Initialize attributes early to prevent AttributeError in disconnect
+        self.user = None
+        self.user_identifier = None
         
-        # Strip trailing slash if present
-        if user_id and user_id.endswith('/'):
-            user_id = user_id.rstrip('/')
+        # Parse the URL path to extract user_id
+        path = self.scope['path']
+        query_string = self.scope.get('query_string', b'').decode()
+        
+        print(f"🔍 Full WebSocket path: {path}")
+        print(f"🔍 Query string: {query_string}")
+        
+        # Extract user_id from query string
+        if query_string:
+            from urllib.parse import parse_qs
+            query_params = parse_qs(query_string)
+            user_id = query_params.get('user_id', [None])[0]
+        else:
+            # Fallback: try to extract from path if no query string
+            # This handles cases where y-websocket might format the URL differently
+            path_parts = path.strip('/').split('/')
+            user_id = None
+            for i, part in enumerate(path_parts):
+                if part == 'yjs' and i + 1 < len(path_parts):
+                    # Check if the next part after 'yjs' contains user info
+                    note_part = path_parts[i + 1]
+                    if '?user_id=' in note_part:
+                        user_id = note_part.split('?user_id=')[1].split('&')[0]
+                        self.note_id = note_part.split('?')[0]
+                    break
+        
+        print(f"🔍 Extracted user_id: {user_id}")
+        print(f"🔍 Note ID: {self.note_id}")
         
         if not user_id:
-            print("❌ No user_id provided in Yjs WebSocket connection")
+            print("❌ No user_id found in WebSocket connection")
             await self.close(code=4001)
             return
+        
+        # Clean the user_id (remove any trailing slashes or extra characters)
+        user_id = str(user_id).strip('/')
         
         # Convert to integer
         try:
@@ -47,6 +74,8 @@ class YjsWebsocketConsumer(AsyncWebsocketConsumer):
             self.user = user
             self.user_identifier = f"user_{user.id}"
             
+            print(f"✅ User authenticated: {user.username} (ID: {user.id})")
+            
             # Check note access permissions
             note_data = await self.get_note_with_details(self.note_id)
             if not note_data:
@@ -61,6 +90,8 @@ class YjsWebsocketConsumer(AsyncWebsocketConsumer):
                 print(f"❌ ACCESS DENIED: User {user.username} cannot access note {self.note_id}")
                 await self.close(code=4003)
                 return
+            
+            print(f"✅ ACCESS GRANTED: User {user.username} can access note {self.note_id}")
             
             # Join room group
             await self.channel_layer.group_add(
@@ -83,19 +114,23 @@ class YjsWebsocketConsumer(AsyncWebsocketConsumer):
             return
 
     async def disconnect(self, close_code):
-        print(f"🔌 Yjs WebSocket DISCONNECTING: User {getattr(self, 'user', 'Unknown')} from note {self.note_id}")
+        print(f"🔌 Yjs WebSocket DISCONNECTING: User {getattr(self, 'user', 'Unknown')} from note {getattr(self, 'note_id', 'Unknown')}")
         
-        try:
-            await self.remove_collaborator()
-        except Exception as e:
-            print(f"⚠️ Error removing collaborator: {e}")
+        # Only try to remove collaborator if we have the necessary attributes
+        if hasattr(self, 'user_identifier') and self.user_identifier and hasattr(self, 'note_id'):
+            try:
+                await self.remove_collaborator()
+            except Exception as e:
+                print(f"⚠️ Error removing collaborator: {e}")
         
-        # Leave room group
-        await self.channel_layer.group_discard(
-            self.room_group_name,
-            self.channel_name
-        )
+        # Leave room group if we have the necessary attributes
+        if hasattr(self, 'room_group_name') and hasattr(self, 'channel_name'):
+            await self.channel_layer.group_discard(
+                self.room_group_name,
+                self.channel_name
+            )
 
+    # Rest of your methods remain the same...
     async def receive(self, text_data=None, bytes_data=None):
         """
         Handle incoming Yjs messages - they can be either text or binary
@@ -103,7 +138,6 @@ class YjsWebsocketConsumer(AsyncWebsocketConsumer):
         try:
             if bytes_data:
                 # Binary message (Yjs update or sync)
-                # Forward to all clients in the room except sender
                 await self.channel_layer.group_send(
                     self.room_group_name,
                     {
@@ -143,7 +177,7 @@ class YjsWebsocketConsumer(AsyncWebsocketConsumer):
         if event['sender_channel'] != self.channel_name:
             await self.send(text_data=json.dumps(event['data']))
 
-    # Reuse your existing database access methods
+    # Keep all your existing database methods unchanged...
     @database_sync_to_async
     def get_user(self, user_id):
         try:
@@ -166,7 +200,6 @@ class YjsWebsocketConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def check_shared_access(self, note_id, user_id):
-        # Reuse your existing access check method
         try:
             note = Note.objects.get(id=note_id)
             
@@ -182,7 +215,6 @@ class YjsWebsocketConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def add_collaborator(self):
-        # Reuse your existing collaborator creation
         colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F']
         color = random.choice(colors)
         
@@ -212,9 +244,11 @@ class YjsWebsocketConsumer(AsyncWebsocketConsumer):
                 user_identifier=self.user_identifier
             )
             collaborator.delete()
+            print(f"👤 Collaborator removed: {self.user.username}")
         except Collaborator.DoesNotExist:
-            pass
-
+            print(f"👤 Collaborator not found to remove")
+            
+            
 class NoteConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.note_id = self.scope['url_route']['kwargs']['note_id']
