@@ -2,7 +2,12 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { QuillBinding } from 'y-quill';
+import QuillCursors from 'quill-cursors';
+import Quill from 'quill';
 import { useAuth } from '../contexts/AuthContext';
+
+// Register the cursors module
+Quill.register('modules/cursors', QuillCursors);
 
 export const useYjs = (noteId, quillRef) => {
   const [isConnected, setIsConnected] = useState(false);
@@ -37,7 +42,7 @@ export const useYjs = (noteId, quillRef) => {
         }
         return prevCollaborators;
       });
-    }, 500);
+    }, 300); // Reduced timeout for faster updates
   }, [user.id]);
 
   useEffect(() => {
@@ -66,7 +71,7 @@ export const useYjs = (noteId, quillRef) => {
       ydoc,
       {
         connect: true,
-        maxBackoffTime: 5000,
+        maxBackoffTime: 3000,
         resyncInterval: -1
       }
     );
@@ -79,10 +84,13 @@ export const useYjs = (noteId, quillRef) => {
     const collaboratorColor = user.color || getRandomColor();
     const userName = user.username || user.first_name || `User-${user.id}`;
     
+    // Set user awareness with more detailed info
     awareness.setLocalStateField('user', {
       name: userName,
       color: collaboratorColor,
-      id: user.id
+      id: user.id,
+      email: user.email,
+      initials: (user.first_name?.[0] || '') + (user.last_name?.[0] || ''),
     });
 
     console.log('🎨 Setting user awareness:', { name: userName, color: collaboratorColor });
@@ -94,14 +102,48 @@ export const useYjs = (noteId, quillRef) => {
     });
 
     // Listen for awareness updates with throttling
-    awareness.on('change', () => {
+    awareness.on('change', ({ added, updated, removed }) => {
+      console.log('👀 Awareness change:', { added: added.length, updated: updated.length, removed: removed.length });
       updateCollaborators(awareness);
     });
 
-    // Bind Quill to Yjs - this handles everything!
-    console.log('🔄 Binding Quill editor to Yjs');
+    // Initialize cursors module
+    const cursors = quillRef.current.getModule('cursors');
+    if (cursors) {
+      console.log('✨ Cursors module initialized');
+    }
+
+    // Bind Quill to Yjs with cursors enabled
+    console.log('🔄 Binding Quill editor to Yjs with cursors');
     const binding = new QuillBinding(ytext, quillRef.current, awareness);
     bindingRef.current = binding;
+
+    // Enhanced cursor tracking
+    awareness.on('change', () => {
+      if (!cursors) return;
+      
+      const states = awareness.getStates();
+      const currentUser = awareness.getLocalState()?.user?.id;
+      
+      // Clear existing cursors
+      cursors.clearCursors();
+      
+      // Add cursors for all other users
+      states.forEach((state, clientId) => {
+        if (!state.user || state.user.id === currentUser) return;
+        
+        const cursor = state.cursor;
+        if (cursor) {
+          cursors.createCursor(
+            clientId,
+            state.user.name,
+            state.user.color
+          );
+          
+          cursors.moveCursor(clientId, cursor);
+        }
+      });
+    });
 
     return () => {
       console.log('🧹 Cleaning up Yjs resources');
@@ -132,7 +174,8 @@ export const useYjs = (noteId, quillRef) => {
 function getRandomColor() {
   const colors = [
     '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', 
-    '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'
+    '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F',
+    '#A8E6CF', '#FFD93D', '#6C5CE7', '#FD79A8'
   ];
   return colors[Math.floor(Math.random() * colors.length)];
 }

@@ -36,6 +36,10 @@ const QuillEditor = ({
           delay: 1000,
           maxStack: 50,
           userOnly: false
+        },
+        // Enable cursors module for collaboration
+        cursors: {
+          transformOnTextChange: true,
         }
       },
       formats: [
@@ -125,25 +129,49 @@ const QuillEditor = ({
           font-style: italic;
         }
         
-        /* Cursor styles for collaboration */
+        /* Enhanced cursor styles for y-quill collaboration */
         .ql-cursor {
           position: absolute;
           border-left: 2px solid;
           margin-left: -1px;
           pointer-events: none;
+          z-index: 1000;
         }
         
         .ql-cursor-flag {
           position: absolute;
-          top: -2px;
+          top: -18px;
           left: -2px;
-          font-size: 12px;
-          font-weight: bold;
+          font-size: 11px;
+          font-weight: 600;
           color: white;
           padding: 2px 6px;
           border-radius: 3px;
           white-space: nowrap;
           pointer-events: none;
+          z-index: 1001;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        
+        .ql-cursor-caret {
+          height: 1.2em;
+          animation: cursorBlink 1s infinite;
+        }
+        
+        .ql-cursor-selections {
+          background-color: rgba(0, 0, 0, 0.1);
+          border-radius: 2px;
+        }
+        
+        @keyframes cursorBlink {
+          0%, 50% { opacity: 1; }
+          51%, 100% { opacity: 0.3; }
+        }
+        
+        /* Remote selection highlighting */
+        .ql-cursor-selection-block {
+          background-color: rgba(0, 0, 0, 0.08);
+          border-radius: 2px;
         }
         
         @media (max-width: 768px) {
@@ -154,6 +182,11 @@ const QuillEditor = ({
           
           .quill-wrapper .ql-toolbar {
             padding: 6px 8px;
+          }
+          
+          .ql-cursor-flag {
+            font-size: 10px;
+            padding: 1px 4px;
           }
         }
       `}</style>
