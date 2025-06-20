@@ -30,6 +30,7 @@ class NoteConsumer(AsyncWebsocketConsumer):
                 return
             
             self.user = user
+            self.user_identifier = f"user_{user.id}"
             print(f"✅ WebSocket User found: {user.username} (ID: {user.id})")
             
             # Get note and check permissions
@@ -42,17 +43,10 @@ class NoteConsumer(AsyncWebsocketConsumer):
             print(f"✅ Note found: '{note_data['title']}' (ID: {note_data['id']})")
             print(f"📝 Note owner: {note_data['owner_username']} (ID: {note_data['owner_id']})")
             
-            # Check if user is owner
+            # Check permissions
             is_owner = note_data['owner_id'] == user.id
-            print(f"👑 Is owner: {is_owner}")
-            
-            # Check if user has shared access
             has_shared_access = await self.check_shared_access(self.note_id, user.id)
-            print(f"🔗 Has shared access: {has_shared_access}")
-            
-            # Final access decision
             has_access = is_owner or has_shared_access
-            print(f"🔒 Final access decision: {has_access}")
             
             if not has_access:
                 print(f"❌ ACCESS DENIED: User {user.username} cannot access note {self.note_id}")
@@ -81,6 +75,9 @@ class NoteConsumer(AsyncWebsocketConsumer):
         try:
             await self.add_collaborator()
             print(f"👤 Collaborator added: {user.username}")
+            
+            # Notify all users about updated collaborators list
+            await self.broadcast_collaborators_update()
         except Exception as e:
             print(f"⚠️ Error adding collaborator: {e}")
 
@@ -93,7 +90,6 @@ class NoteConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_note_with_details(self, note_id):
-        """Get note with basic details in one async call"""
         try:
             note = Note.objects.select_related('owner').get(id=note_id)
             return {
@@ -107,16 +103,12 @@ class NoteConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def check_shared_access(self, note_id, user_id):
-        """Check if user has shared access to the note using NoteShare model"""
         try:
-            # Check both many-to-many relationship and NoteShare model
             note = Note.objects.get(id=note_id)
             
-            # Check direct many-to-many relationship
             if note.shared_with.filter(id=user_id).exists():
                 return True
             
-            # Check NoteShare model
             if NoteShare.objects.filter(note_id=note_id, shared_with_id=user_id).exists():
                 return True
                 
@@ -129,6 +121,8 @@ class NoteConsumer(AsyncWebsocketConsumer):
         
         try:
             await self.remove_collaborator()
+            # Notify remaining users about collaborator leaving
+            await self.broadcast_collaborators_update()
         except Exception as e:
             print(f"⚠️ Error removing collaborator: {e}")
         
@@ -148,7 +142,8 @@ class NoteConsumer(AsyncWebsocketConsumer):
                 {
                     'type': 'content_update',
                     'content': data['content'],
-                    'user_id': data.get('user_id'),
+                    'user_id': self.user_identifier,
+                    'user_name': self.user.username,
                     'sender_channel': self.channel_name
                 }
             )
@@ -158,9 +153,9 @@ class NoteConsumer(AsyncWebsocketConsumer):
                 {
                     'type': 'cursor_update',
                     'position': data['position'],
-                    'user_id': data.get('user_id'),
-                    'user_name': data.get('user_name'),
-                    'color': data.get('color'),
+                    'user_id': self.user_identifier,
+                    'user_name': self.user.username,
+                    'color': data.get('color', '#FF6B6B'),
                     'sender_channel': self.channel_name
                 }
             )
@@ -170,7 +165,8 @@ class NoteConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({
                 'type': 'content_change',
                 'content': event['content'],
-                'user_id': event['user_id']
+                'user_id': event['user_id'],
+                'user_name': event['user_name']
             }))
 
     async def cursor_update(self, event):
@@ -189,37 +185,33 @@ class NoteConsumer(AsyncWebsocketConsumer):
             'collaborators': event['collaborators']
         }))
 
-    async def note_saved(self, event):
-        await self.send(text_data=json.dumps({
-            'type': 'note_saved',
-            'message': event['message']
-        }))
-
-    async def note_deleted(self, event):
-        await self.send(text_data=json.dumps({
-            'type': 'note_deleted',
-            'message': event['message']
-        }))
+    async def broadcast_collaborators_update(self):
+        """Broadcast updated collaborators list to all users in the room"""
+        collaborators = await self.get_collaborators()
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'collaborators_update',
+                'collaborators': collaborators
+            }
+        )
 
     @database_sync_to_async
     def add_collaborator(self):
-        user_id = f"user_{self.user.id}"
-        
         colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F']
         color = random.choice(colors)
         
         collaborator, created = Collaborator.objects.get_or_create(
             note_id=self.note_id,
-            user_identifier=user_id,
+            user_identifier=self.user_identifier,
             defaults={
                 'is_active': True,
                 'user_name': self.user.username,
                 'color': color,
-                'user': self.user  # Link to actual user
+                'user': self.user
             }
         )
         
-        # Update collaborator info
         collaborator.is_active = True
         collaborator.user_name = self.user.username
         collaborator.user = self.user
@@ -233,12 +225,10 @@ class NoteConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def remove_collaborator(self):
-        user_id = f"user_{self.user.id}"
-        
         try:
             collaborator = Collaborator.objects.get(
                 note_id=self.note_id,
-                user_identifier=user_id
+                user_identifier=self.user_identifier
             )
             collaborator.delete()
             print(f"👤 Collaborator removed: {self.user.username}")

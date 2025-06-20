@@ -4,7 +4,7 @@ import { Editor } from '@tinymce/tinymce-react';
 import { useWebSocket } from '../hooks/useWebSocket.jsx';
 import ShareModal from './ShareModal.jsx';
 
-// Utility functions
+// Utility functions remain the same...
 const extractTitle = (htmlContent) => {
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = htmlContent;
@@ -23,11 +23,13 @@ const removeTitleFromContent = (htmlContent) => {
 };
 
 export default function TextEditor({ setSidebarOpen }) {
+  // All your existing state...
   const { id } = useParams();
   const navigate = useNavigate();
   const editorRef = useRef(null);
   const isUpdatingFromWS = useRef(false);
   const currentUserId = useRef(`user_${Math.random().toString(36).substr(2, 9)}`);
+  const cursorsContainerRef = useRef(null); // Add this for cursor positioning
 
   const [content, setContent] = useState('');
   const [isNewNote, setIsNewNote] = useState(false);
@@ -43,6 +45,7 @@ export default function TextEditor({ setSidebarOpen }) {
   const [isOwner, setIsOwner] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
+  // Enhanced WebSocket with better cursor handling
   const { isConnected, sendContentChange, sendCursorPosition } = useWebSocket(
     id,
     (newContent, userId) => {
@@ -62,12 +65,29 @@ export default function TextEditor({ setSidebarOpen }) {
       if (userId !== currentUserId.current) {
         setCursors(prev => ({
           ...prev,
-          [userId]: { position, userName, color }
+          [userId]: { 
+            position, 
+            userName, 
+            color,
+            timestamp: Date.now() // Add timestamp for cleanup
+          }
         }));
+        
+        // Clean up old cursors after 10 seconds of inactivity
+        setTimeout(() => {
+          setCursors(prev => {
+            const updated = { ...prev };
+            if (updated[userId] && Date.now() - updated[userId].timestamp > 10000) {
+              delete updated[userId];
+            }
+            return updated;
+          });
+        }, 10000);
       }
     }
   );
 
+  // All your existing useEffect and handlers remain the same...
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -133,26 +153,91 @@ export default function TextEditor({ setSidebarOpen }) {
     }
   };
 
+  // ENHANCED CURSOR HANDLING
   const handleCursorChange = (editor) => {
     if (!isUpdatingFromWS.current && id && isConnected) {
-      const selection = editor.selection;
-      const range = selection.getRng();
-      const position = {
-        startContainer: range.startContainer,
-        startOffset: range.startOffset,
-        endContainer: range.endContainer,
-        endOffset: range.endOffset
-      };
-      
-      sendCursorPosition(
-        position, 
-        currentUserId.current, 
-        `User${currentUserId.current.slice(-4)}`,
-        '#FF6B6B'
-      );
+      try {
+        const selection = editor.selection;
+        const range = selection.getRng();
+        
+        // Get more precise cursor position
+        const bookmark = selection.getBookmark(2, true);
+        const cursorInfo = {
+          bookmark: bookmark,
+          startOffset: range.startOffset,
+          endOffset: range.endOffset,
+          collapsed: range.collapsed
+        };
+        
+        // Get collaborator info
+        const collaborator = collaborators.find(c => c.user_identifier === currentUserId.current);
+        const userName = collaborator?.user_name || `User${currentUserId.current.slice(-5)}`;
+        const color = collaborator?.color || '#FF6B6B';
+        
+        sendCursorPosition(
+          cursorInfo, 
+          currentUserId.current, 
+          userName,
+          color
+        );
+      } catch (error) {
+        console.log('Cursor tracking error:', error);
+      }
     }
   };
 
+  // VISUAL CURSOR RENDERING
+  const renderOtherCursors = () => {
+    if (!editorRef.current) return null;
+    
+    return Object.entries(cursors).map(([userId, cursorData]) => {
+      try {
+        const editor = editorRef.current;
+        const doc = editor.getDoc();
+        
+        // Try to restore cursor position using bookmark
+        if (cursorData.position?.bookmark) {
+          const selection = editor.selection;
+          selection.moveToBookmark(cursorData.position.bookmark);
+          const range = selection.getRng();
+          
+          // Get the visual position
+          const rect = range.getBoundingClientRect();
+          const editorRect = editor.getContainer().getBoundingClientRect();
+          
+          if (rect.top > 0 && rect.left > 0) {
+            return (
+              <div key={userId} className="absolute pointer-events-none z-50">
+                <div
+                  className="absolute w-0.5 h-5 animate-pulse"
+                  style={{
+                    backgroundColor: cursorData.color,
+                    left: rect.left - editorRect.left,
+                    top: rect.top - editorRect.top + 20,
+                  }}
+                />
+                <div
+                  className="absolute px-2 py-1 text-xs text-white rounded-md shadow-lg whitespace-nowrap"
+                  style={{
+                    backgroundColor: cursorData.color,
+                    left: rect.left - editorRect.left,
+                    top: rect.top - editorRect.top - 5,
+                  }}
+                >
+                  {cursorData.userName}
+                </div>
+              </div>
+            );
+          }
+        }
+      } catch (error) {
+        console.log('Render cursor error:', error);
+      }
+      return null;
+    });
+  };
+
+  // All your existing handlers (save, delete, share) remain the same...
   const handleDelete = () => {
     if (!foundNote || isNewNote) {
       console.warn('No note to delete or it is a new note.');
@@ -248,6 +333,7 @@ export default function TextEditor({ setSidebarOpen }) {
     }
   };
 
+  // Loading and error states remain the same...
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-[#E7EFC7] p-4">
@@ -295,7 +381,7 @@ export default function TextEditor({ setSidebarOpen }) {
         </div>
       )}
 
-      {/* Header - Fixed and Simple */}
+      {/* Header - All your existing header code remains the same... */}
       <div className="bg-white/30 backdrop-blur-sm border-b border-white/20 p-4 flex-shrink-0 relative z-30">
         {/* Top row */}
         <div className="flex items-center justify-between mb-2">
@@ -335,13 +421,24 @@ export default function TextEditor({ setSidebarOpen }) {
           </button>
         </div>
 
-        {/* Desktop buttons */}
+        {/* Desktop status and buttons */}
         <div className="hidden lg:flex items-center justify-between">
           <div className="flex items-center space-x-2 text-sm text-[#8A784E]">
             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
             <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
             <span>•</span>
             <span>{collaborators.length} collaborators</span>
+            
+            {/* Active cursors indicator */}
+            {Object.keys(cursors).length > 0 && (
+              <>
+                <span>•</span>
+                <span className="text-blue-600 font-medium">
+                  {Object.keys(cursors).length} active cursor{Object.keys(cursors).length !== 1 ? 's' : ''}
+                </span>
+              </>
+            )}
+            
             {!isNewNote && (
               <>
                 <span>•</span>
@@ -385,7 +482,7 @@ export default function TextEditor({ setSidebarOpen }) {
           </div>
         </div>
 
-        {/* Mobile menu - FIXED Z-INDEX */}
+        {/* Mobile menu - same as before */}
         {showMobileMenu && (
           <div className="lg:hidden absolute top-full left-4 right-4 mt-2 p-3 bg-white/95 backdrop-blur-sm rounded-lg shadow-xl border border-white/30 z-50">
             <div className="flex items-center space-x-2 text-sm text-[#8A784E] mb-3">
@@ -393,6 +490,12 @@ export default function TextEditor({ setSidebarOpen }) {
               <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
               <span>•</span>
               <span>{collaborators.length} collaborators</span>
+              {Object.keys(cursors).length > 0 && (
+                <>
+                  <span>•</span>
+                  <span className="text-blue-600">{Object.keys(cursors).length} cursors</span>
+                </>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -437,7 +540,7 @@ export default function TextEditor({ setSidebarOpen }) {
         )}
       </div>
 
-      {/* Mobile menu overlay - FIXED */}
+      {/* Mobile menu overlay */}
       {showMobileMenu && (
         <div 
           className="fixed inset-0 bg-black/20 z-20 lg:hidden"
@@ -445,9 +548,14 @@ export default function TextEditor({ setSidebarOpen }) {
         />
       )}
 
-      {/* Editor Container - FULL TINYMCE FEATURES */}
-      <div className="flex-1 p-4 min-h-0 overflow-hidden">
-        <div className="w-full h-full bg-white/40 backdrop-blur-sm rounded-xl shadow-lg border border-white/20 overflow-hidden">
+      {/* Editor Container with CURSOR OVERLAY */}
+      <div className="flex-1 p-4 min-h-0 overflow-hidden relative">
+        <div className="w-full h-full bg-white/40 backdrop-blur-sm rounded-xl shadow-lg border border-white/20 overflow-hidden relative">
+          {/* Cursors overlay container */}
+          <div ref={cursorsContainerRef} className="absolute inset-0 pointer-events-none z-40">
+            {renderOtherCursors()}
+          </div>
+
           <Editor
             apiKey={import.meta.env.VITE_TINYMCE_API_KEY}
             onInit={(evt, editor) => {
@@ -455,6 +563,7 @@ export default function TextEditor({ setSidebarOpen }) {
               editor.on('NodeChange', () => handleCursorChange(editor));
               editor.on('KeyUp', () => handleCursorChange(editor));
               editor.on('MouseUp', () => handleCursorChange(editor));
+              editor.on('SelectionChange', () => handleCursorChange(editor));
             }}
             init={{
               height: '100%',
@@ -492,7 +601,7 @@ export default function TextEditor({ setSidebarOpen }) {
               paste_data_images: true,
               automatic_uploads: true,
               file_picker_types: 'image',
-              // FULL CONTENT STYLE
+              // Enhanced content style with cursor support
               content_style: `
                 body { 
                   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
@@ -504,6 +613,7 @@ export default function TextEditor({ setSidebarOpen }) {
                   margin: 0;
                   min-height: 100%;
                   box-sizing: border-box;
+                  position: relative;
                 }
                 p { margin-bottom: 16px; }
                 h1, h2, h3, h4, h5, h6 { 
@@ -511,89 +621,34 @@ export default function TextEditor({ setSidebarOpen }) {
                   margin: 24px 0 12px 0;
                   font-weight: 600;
                 }
-                h1 { font-size: 2.5em; }
-                h2 { font-size: 2em; }
-                h3 { font-size: 1.5em; }
-                h4 { font-size: 1.25em; }
-                h5 { font-size: 1.1em; }
-                h6 { font-size: 1em; }
-                blockquote {
-                  border-left: 4px solid #8A784E;
-                  margin: 16px 0;
-                  padding: 8px 16px;
-                  background: rgba(138, 120, 78, 0.1);
-                  font-style: italic;
+                .collaborator-cursor {
+                  position: absolute;
+                  width: 2px;
+                  height: 20px;
+                  pointer-events: none;
+                  z-index: 1000;
+                  animation: blink 1s infinite;
                 }
-                pre {
-                  background: #f5f5f5;
-                  border: 1px solid #ddd;
-                  border-radius: 4px;
-                  padding: 12px;
-                  overflow-x: auto;
-                  font-family: 'Courier New', monospace;
-                }
-                code {
-                  background: #f5f5f5;
-                  padding: 2px 4px;
+                .collaborator-cursor-label {
+                  position: absolute;
+                  top: -25px;
+                  left: 0;
+                  background: rgba(0,0,0,0.8);
+                  color: white;
+                  padding: 2px 6px;
                   border-radius: 3px;
-                  font-family: 'Courier New', monospace;
-                  font-size: 0.9em;
+                  font-size: 12px;
+                  white-space: nowrap;
+                  pointer-events: none;
                 }
-                table {
-                  border-collapse: collapse;
-                  width: 100%;
-                  margin: 16px 0;
-                }
-                table, th, td {
-                  border: 1px solid #ddd;
-                }
-                th, td {
-                  padding: 8px 12px;
-                  text-align: left;
-                }
-                th {
-                  background-color: #f5f5f5;
-                  font-weight: 600;
-                }
-                img {
-                  max-width: 100%;
-                  height: auto;
-                  border-radius: 8px;
-                  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-                }
-                a {
-                  color: #8A784E;
-                  text-decoration: underline;
-                }
-                a:hover {
-                  color: #3B3B1A;
-                }
-                hr {
-                  border: none;
-                  border-top: 2px solid #8A784E;
-                  margin: 24px 0;
-                  opacity: 0.3;
-                }
-                ul, ol {
-                  padding-left: 24px;
-                  margin: 16px 0;
-                }
-                li {
-                  margin-bottom: 8px;
+                @keyframes blink {
+                  0%, 50% { opacity: 1; }
+                  51%, 100% { opacity: 0; }
                 }
                 @media (max-width: 768px) {
                   body {
                     padding: 12px;
                     font-size: 16px;
-                  }
-                  h1 { font-size: 2em; }
-                  h2 { font-size: 1.75em; }
-                  h3 { font-size: 1.5em; }
-                  table {
-                    font-size: 14px;
-                  }
-                  th, td {
-                    padding: 6px 8px;
                   }
                 }
               `,
