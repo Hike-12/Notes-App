@@ -40,9 +40,10 @@ export default function TextEditor({ setSidebarOpen }) {
   const [isOwner, setIsOwner] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [collaborators, setCollaborators] = useState([]);
 
   // WebSocket without cursor handling
-  const { isConnected, collaborators } = useYjs(id, editorRef);
+  const { isConnected, collaborators: yjsCollaborators } = useYjs(id, editorRef);
 
   // All your existing useEffect code...
   useEffect(() => {
