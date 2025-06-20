@@ -168,21 +168,22 @@ export default function TextEditor({ setSidebarOpen }) {
       const selection = editor.selection;
       const range = selection.getRng();
 
-      // Actual caret rectangle
+      // Get caret rect
       const rangeRect = range.getBoundingClientRect();
-      const bodyRect = editor.getBody().getBoundingClientRect();
+
+      // Use the editor container rather than just the editor body
+      const containerRect = editor.getContainer().getBoundingClientRect();
 
       const position = {
-        top: rangeRect.top - bodyRect.top + editor.getDoc().documentElement.scrollTop,
-        left: rangeRect.left - bodyRect.left + editor.getDoc().documentElement.scrollLeft
+        top: rangeRect.top - containerRect.top + editor.getDoc().documentElement.scrollTop + 5, // +5 to shift cursor down
+        left: rangeRect.left - containerRect.left + editor.getDoc().documentElement.scrollLeft
       };
 
-      // Get collaborator info
+      // Send position to the server
       const collaborator = collaborators.find(c => c.user_identifier === currentUserId.current);
       const userName = collaborator?.user_name || `User${currentUserId.current.slice(-5)}`;
       const color = collaborator?.color || '#FF6B6B';
 
-      console.log('📤 Sending cursor position:', { position, userId: currentUserId.current, userName, color });
       sendCursorPosition(position, currentUserId.current, userName, color);
 
     } catch (error) {
@@ -204,6 +205,8 @@ const updateVisualCursors = () => {
     try {
       console.log('🎨 Rendering cursor for:', userId, cursorData);
 
+      const top = cursorData.position?.top || 0;
+      const left = cursorData.position?.left || 0;
       // Create cursor element
       const cursorElement = document.createElement('div');
       cursorElement.className = 'collaborator-cursor';
@@ -240,6 +243,10 @@ const updateVisualCursors = () => {
       // Append both to overlay
       cursorOverlayRef.current.appendChild(cursorElement);
       cursorOverlayRef.current.appendChild(labelElement);
+      cursorElement.style.top = `${top}px`;
+      cursorElement.style.left = `${left}px`;
+      labelElement.style.top = `${top - 25}px`;
+      labelElement.style.left = `${left}px`;
 
       console.log('✅ Cursor rendered for:', cursorData.userName);
 
