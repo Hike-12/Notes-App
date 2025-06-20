@@ -28,14 +28,14 @@ export const useYjs = (noteId, editorRef) => {
     const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
     const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
     const wsHost = apiUrl.replace(/^https?:\/\//, '');
-    const wsUrl = `${wsProtocol}://${wsHost}/ws/yjs/${noteId}/`;  // Add trailing slash
-    console.log('🔗 Connecting to WebSocket URL:', wsUrl);
+    const wsUrl = `${wsProtocol}://${wsHost}/ws/yjs/${noteId}/?user_id=${user.id}`;
+console.log('🔗 Connecting to WebSocket URL:', wsUrl);
 
-    const provider = new WebsocketProvider(
-      wsUrl,
-      `${noteId}?user_id=${user.id}`, // Pass as room name with query
-      ydoc
-    );
+const provider = new WebsocketProvider(
+  wsUrl,
+  '', // Empty room name since we included everything in the URL
+  ydoc
+);
     providerRef.current = provider;
 
     // Setup awareness (for cursor sharing)
