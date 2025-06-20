@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Editor } from '@tinymce/tinymce-react';
+import QuillEditor from './QuillEditor.jsx';
 import { useYjs } from '../hooks/useYjs.jsx';
 import ShareModal from './ShareModal.jsx';
+import { useAuth } from '../contexts/AuthContext.jsx';
 
-// Utility functions remain the same...
+// Utility functions for Quill HTML content
 const extractTitle = (htmlContent) => {
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = htmlContent;
   const firstParagraph = tempDiv.querySelector('p');
-  return firstParagraph ? firstParagraph.innerText : '';
+  return firstParagraph ? firstParagraph.innerText.trim() : '';
 };
 
 const removeTitleFromContent = (htmlContent) => {
@@ -25,11 +26,11 @@ const removeTitleFromContent = (htmlContent) => {
 export default function TextEditor({ setSidebarOpen }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const editorRef = useRef(null);
-  const isUpdatingFromWS = useRef(false);
-  const currentUserId = useRef(`user_${Math.random().toString(36).substr(2, 9)}`);
+  const { user } = useAuth();
+  const quillRef = useRef(null);
   const editorInitialized = useRef(false);
 
+  // State variables
   const [content, setContent] = useState('');
   const [isNewNote, setIsNewNote] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -43,31 +44,17 @@ export default function TextEditor({ setSidebarOpen }) {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [collaborators, setCollaborators] = useState([]);
 
+  // Initialize Yjs after Quill is ready
+  const { isConnected, collaborators: yjsCollaborators } = useYjs(
+    id && quillRef.current ? id : null, 
+    quillRef
+  );
 
-// Initialize Yjs only after editor is ready and stable
-useEffect(() => {
-  if (editorRef.current && !editorInitialized.current && id) {
-    editorInitialized.current = true;
-    
-    // Small delay to ensure editor is fully initialized
-    setTimeout(() => {
-      console.log('🚀 Editor ready, initializing Yjs...');
-    }, 100);
-  }
-}, [editorRef.current, id]);
-
-// Move useYjs outside of useEffect and make it conditional
-const yjsEnabled = editorRef.current && editorInitialized.current && id;
-const { isConnected, collaborators: yjsCollaborators } = useYjs(
-  yjsEnabled ? id : null, 
-  editorRef
-);
-
-
-  // All your existing useEffect code...
+  // Fetch note data
   useEffect(() => {
     setLoading(true);
     setError(null);
+    
     const fetchData = async () => {
       if (id) {
         try {
@@ -90,7 +77,7 @@ const { isConnected, collaborators: yjsCollaborators } = useYjs(
           const data = await response.json();
 
           if (data) {
-            setContent(data.body || ''); 
+            setContent(data.body || '<p></p>'); 
             setFoundNote(data);
             setIsNewNote(false);
             setCollaborators(data.collaborators || []);
@@ -106,7 +93,8 @@ const { isConnected, collaborators: yjsCollaborators } = useYjs(
           setLoading(false);
         }
       } else {
-        setContent('');
+        // New note
+        setContent('<p></p>');
         setIsNewNote(true);
         setPermission('edit');
         setIsOwner(true);
@@ -117,15 +105,74 @@ const { isConnected, collaborators: yjsCollaborators } = useYjs(
     fetchData();
   }, [id, navigate]);
 
+  // Handle Quill editor changes
   const handleEditorChange = (newContent) => {
     if (permission !== 'edit') {
       return;
     }
-    
     setContent(newContent);
   };
 
-  // All your existing handlers remain the same...
+  // Handle Quill editor initialization
+  const handleQuillInit = (quill) => {
+    quillRef.current = quill;
+    editorInitialized.current = true;
+    console.log('📝 Quill editor initialized for collaboration');
+  };
+
+  // Save note
+  const handleSave = () => {
+    if (permission !== 'edit') {
+      alert('You do not have permission to edit this note.');
+      return;
+    }
+
+    setIsSaving(true);
+    const title = extractTitle(content) || 'Untitled Note';
+    const contentWithoutTitle = removeTitleFromContent(content);
+    const fullContent = `<p>${title}</p>${contentWithoutTitle}`;
+
+    fetch(`${import.meta.env.VITE_API_BASE_URL}/api/save-note/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        id: isNewNote ? null : foundNote.id,
+        content: fullContent,
+        title,
+      }),
+    })
+      .then(response => response.json())
+      .then(data => {
+        setIsSaving(false);
+        if (data.success) {
+          setShowSuccess(true);
+          console.log('Content saved:', data);
+          
+          if (isNewNote) {
+            navigate(`/edit-note/${data.id}`, { replace: true });
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
+          } else {
+            setTimeout(() => {
+              setShowSuccess(false);
+            }, 2000);
+          }
+        } else {
+          alert(data.message || 'Failed to save note');
+        }
+      })
+      .catch(error => {
+        console.error('There was an error saving the content!', error);
+        setIsSaving(false);
+        alert('Failed to save note. Please try again.');
+      });
+  };
+
+  // Delete note
   const handleDelete = () => {
     if (!foundNote || isNewNote) {
       console.warn('No note to delete or it is a new note.');
@@ -156,56 +203,7 @@ const { isConnected, collaborators: yjsCollaborators } = useYjs(
     }
   };
 
-  const handleSave = () => {
-    if (permission !== 'edit') {
-      alert('You do not have permission to edit this note.');
-      return;
-    }
-
-    setIsSaving(true);
-    const title = extractTitle(content);
-    const contentWithoutTitle = removeTitleFromContent(content);
-    const fullContent = `<p>${title}</p>${contentWithoutTitle}`;
-
-    fetch(`${import.meta.env.VITE_API_BASE_URL}/api/save-note/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({
-        id: isNewNote ? null : foundNote.id,
-        content: fullContent,
-        title,
-      }),
-    })
-      .then(response => response.json())
-      .then(data => {
-        setIsSaving(false);
-        if (data.success) {
-          setShowSuccess(true);
-          
-          if (isNewNote) {
-            navigate(`/edit-note/${data.id}`, { replace: true });
-            setTimeout(() => {
-              window.location.reload();
-            }, 1000);
-          } else {
-            console.log('Content saved:', data);
-            setTimeout(() => {
-              setShowSuccess(false);
-            }, 2000);
-          }
-        } else {
-          alert(data.message || 'Failed to save note');
-        }
-      })
-      .catch(error => {
-        console.error('There was an error saving the content!', error);
-        setIsSaving(false);
-      });
-  };
-
+  // Handle share updates
   const handleShareUpdate = () => {
     if (id) {
       fetch(`${import.meta.env.VITE_API_BASE_URL}/api/get-note/${id}/`, {
@@ -221,7 +219,7 @@ const { isConnected, collaborators: yjsCollaborators } = useYjs(
     }
   };
 
-  // Loading and error states remain the same...
+  // Loading state
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-[#E7EFC7] p-4">
@@ -235,6 +233,7 @@ const { isConnected, collaborators: yjsCollaborators } = useYjs(
     );
   }
 
+  // Error state
   if (error) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-[#E7EFC7] p-4">
@@ -312,7 +311,7 @@ const { isConnected, collaborators: yjsCollaborators } = useYjs(
             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
             <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
             <span>•</span>
-            <span>{collaborators.length} collaborators</span>
+            <span>{yjsCollaborators.length} collaborator{yjsCollaborators.length !== 1 ? 's' : ''}</span>
             
             {!isNewNote && (
               <>
@@ -364,7 +363,7 @@ const { isConnected, collaborators: yjsCollaborators } = useYjs(
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
               <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
               <span>•</span>
-              <span>{collaborators.length} collaborators</span>
+              <span>{yjsCollaborators.length} collaborator{yjsCollaborators.length !== 1 ? 's' : ''}</span>
             </div>
 
             <div className="space-y-2">
@@ -419,146 +418,37 @@ const { isConnected, collaborators: yjsCollaborators } = useYjs(
 
       {/* Editor Container */}
       <div className="flex-1 p-4 min-h-0 overflow-hidden relative">
-        <div className="w-full h-full bg-white/40 backdrop-blur-sm rounded-xl shadow-lg border border-white/20 overflow-hidden relative">
-          <Editor
-            key={id || 'new-note'}
-            apiKey={import.meta.env.VITE_TINYMCE_API_KEY}
-            onInit={(evt, editor) => {
-              editorRef.current = editor;
-            }}
-            init={{
-              height: '100%',
-              width: '100%',
-              typing_speed: 300,
-              // ALL TINYMCE PLUGINS
-              plugins: [
-                'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
-                'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
-                'insertdatetime', 'media', 'table', 'help', 'wordcount', 'emoticons',
-                'codesample',
-                'pagebreak', 'nonbreaking', 'save', 'autosave',
-                'directionality', 'visualchars', 'quickbars', 'importcss'
-              ],
-              toolbar: permission === 'edit' 
-                ? 'undo redo | blocks | ' +
-                  'bold italic forecolor backcolor | alignleft aligncenter ' +
-                  'alignright alignjustify | bullist numlist outdent indent | ' +
-                  'removeformat | table tabledelete | tableprops tablerowprops tablecellprops | ' +
-                  'tableinsertrowbefore tableinsertrowafter tabledeleterow | ' +
-                  'tableinsertcolbefore tableinsertcolafter tabledeletecol | ' +
-                  'link image media | codesample | emoticons charmap | ' +
-                  'searchreplace | visualblocks fullscreen | ' +
-                  'insertdatetime pagebreak | help'
-                : false,
-              menubar: permission === 'edit' ? 'file edit view insert format tools table help' : false,
-              branding: false,
-              skin: 'borderless',
-              readonly: permission !== 'edit',
-              toolbar_mode: 'sliding',
-              toolbar_sticky: false,
-              contextmenu: 'link image table',
-              quickbars_selection_toolbar: 'bold italic | quicklink h2 h3 blockquote quickimage quicktable',
-              quickbars_insert_toolbar: 'quickimage quicktable',
-              paste_data_images: true,
-              automatic_uploads: true,
-              file_picker_types: 'image',
-              content_style: `
-      body { 
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
-        font-size: 16px; 
-        line-height: 1.6; 
-        color: #3B3B1A;
-        background: transparent;
-        padding: 20px;
-        margin: 0;
-        min-height: 100%;
-        box-sizing: border-box;
-        position: relative;
-      }
-      p { margin-bottom: 16px; }
-      h1, h2, h3, h4, h5, h6 { 
-        color: #8A784E; 
-        margin: 24px 0 12px 0;
-        font-weight: 600;
-      }
-      
-      /* Cursor styles for Yjs */
-      .remote-caret {
-        position: absolute;
-        border-left: 2px solid black;
-        border-right: 2px solid black;
-        margin-left: -1px;
-        margin-right: -1px;
-        pointer-events: none;
-        z-index: 3;
-      }
-      .remote-caret > div {
-        position: absolute;
-        top: -1.05em;
-        left: -2px;
-        font-size: 0.9em;
-        background-color: rgb(250, 129, 0);
-        font-family: sans-serif;
-        font-style: normal;
-        font-weight: normal;
-        line-height: normal;
-        white-space: nowrap;
-        color: white;
-        padding: 2px 6px;
-        border-radius: 3px;
-        user-select: none;
-        pointer-events: none;
-      }
-      
-      @media (max-width: 768px) {
-        body {
-          padding: 12px;
-          font-size: 16px;
-        }
-      }
-    `,
-              mobile: {
-                toolbar_mode: 'sliding',
-                menubar: false,
-                plugins: [
-                  'lists', 'autolink', 'link', 'image', 'charmap',
-                  'searchreplace', 'code', 'insertdatetime', 'media',
-                  'table', 'emoticons',
-                  'help'
-                ],
-                toolbar: permission === 'edit' 
-                  ? 'undo redo | bold italic | alignleft aligncenter alignright | bullist numlist | link image | removeformat'
-                  : false
-              },
-              statusbar: false,
-              resize: false,
-              auto_focus: false,
-              save_onsavecallback: () => {
-                if (permission === 'edit') {
-                  handleSave();
-                }
-              },
-              save_enablewhendirty: true,
-              autosave_interval: '30s',
-              autosave_prefix: 'scribe-autosave-{path}{query}-{id}-',
-              autosave_restore_when_empty: false,
-              autosave_retention: '2m',
-              setup: function(editor) {
-                editor.on('init', function() {
-                  editor.getContainer().style.border = 'none';
-                  console.log('📝 Editor setup complete');
-                });
-                
-                editor.addShortcut('ctrl+s', 'Save note', () => {
-                  if (permission === 'edit') {
-                    handleSave();
-                  }
-                });
-              }
-            }}
-            value={content}
-            onEditorChange={handleEditorChange}
-          />
+        <div className="w-full h-full bg-white/40 backdrop-blur-sm rounded-xl shadow-lg border border-white/20 overflow-hidden">
+          {/* Connection status indicator for editor */}
+          <div className="flex items-center justify-between px-4 py-2 bg-white/20 border-b border-white/20">
+            <div className="flex items-center space-x-2 text-xs text-[#8A784E]">
+              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+              <span>{isConnected ? 'Real-time collaboration active' : 'Offline mode'}</span>
+              {yjsCollaborators.length > 0 && (
+                <>
+                  <span>•</span>
+                  <span>{yjsCollaborators.length} user{yjsCollaborators.length !== 1 ? 's' : ''} editing</span>
+                </>
+              )}
+            </div>
+            {permission !== 'edit' && (
+              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                Read Only
+              </span>
+            )}
+          </div>
+
+          {/* Quill Editor */}
+          <div className="h-full">
+            <QuillEditor
+              value={content}
+              onChange={handleEditorChange}
+              onInit={handleQuillInit}
+              readOnly={permission !== 'edit'}
+              placeholder={permission === 'edit' ? 'Start writing your note...' : 'This note is read-only'}
+              className="h-full"
+            />
+          </div>
         </div>
       </div>
 
