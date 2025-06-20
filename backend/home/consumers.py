@@ -5,6 +5,203 @@ from django.contrib.auth.models import User
 from .models import Note, Collaborator, NoteShare
 from urllib.parse import parse_qs
 import random
+import base64
+
+
+class YjsWebsocketConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        # Get note_id from URL
+        self.note_id = self.scope['url_route']['kwargs']['note_id']
+        self.room_group_name = f'yjs_note_{self.note_id}'
+        
+        # Get user from query parameters
+        query_string = self.scope.get('query_string', b'').decode()
+        query_params = parse_qs(query_string)
+        user_id = query_params.get('user_id', [None])[0]
+        
+        if not user_id:
+            print("❌ No user_id provided in Yjs WebSocket connection")
+            await self.close(code=4001)
+            return
+        
+        try:
+            # Get user and check permissions
+            user = await self.get_user(user_id)
+            if not user:
+                print(f"❌ User {user_id} not found")
+                await self.close(code=4001)
+                return
+            
+            self.user = user
+            self.user_identifier = f"user_{user.id}"
+            
+            # Check note access permissions
+            note_data = await self.get_note_with_details(self.note_id)
+            if not note_data:
+                print(f"❌ Note {self.note_id} not found")
+                await self.close(code=4004)
+                return
+            
+            is_owner = note_data['owner_id'] == user.id
+            has_shared_access = await self.check_shared_access(self.note_id, user.id)
+            
+            if not (is_owner or has_shared_access):
+                print(f"❌ ACCESS DENIED: User {user.username} cannot access note {self.note_id}")
+                await self.close(code=4003)
+                return
+            
+            # Join room group
+            await self.channel_layer.group_add(
+                self.room_group_name,
+                self.channel_name
+            )
+            
+            # Accept the connection
+            await self.accept()
+            print(f"🚀 Yjs WebSocket CONNECTED: User {user.username} to note {self.note_id}")
+            
+            # Add collaborator
+            await self.add_collaborator()
+            
+        except Exception as e:
+            print(f"❌ Error in Yjs WebSocket connect: {e}")
+            import traceback
+            traceback.print_exc()
+            await self.close(code=4004)
+            return
+
+    async def disconnect(self, close_code):
+        print(f"🔌 Yjs WebSocket DISCONNECTING: User {getattr(self, 'user', 'Unknown')} from note {self.note_id}")
+        
+        try:
+            await self.remove_collaborator()
+        except Exception as e:
+            print(f"⚠️ Error removing collaborator: {e}")
+        
+        # Leave room group
+        await self.channel_layer.group_discard(
+            self.room_group_name,
+            self.channel_name
+        )
+
+    async def receive(self, text_data=None, bytes_data=None):
+        """
+        Handle incoming Yjs messages - they can be either text or binary
+        """
+        try:
+            if bytes_data:
+                # Binary message (Yjs update or sync)
+                # Forward to all clients in the room except sender
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        'type': 'yjs_update',
+                        'data': base64.b64encode(bytes_data).decode('utf-8'),
+                        'sender_channel': self.channel_name
+                    }
+                )
+            elif text_data:
+                # Text data (likely awareness updates)
+                data = json.loads(text_data)
+                
+                # Handle awareness updates (cursor positions)
+                if data.get('type') == 'awareness':
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            'type': 'awareness_update',
+                            'data': data,
+                            'sender_channel': self.channel_name
+                        }
+                    )
+        except Exception as e:
+            print(f"⚠️ Error in Yjs receive: {e}")
+            import traceback
+            traceback.print_exc()
+
+    async def yjs_update(self, event):
+        """Forward Yjs update to clients"""
+        if event['sender_channel'] != self.channel_name:
+            # Decode the base64 data back to binary
+            binary_data = base64.b64decode(event['data'])
+            await self.send(bytes_data=binary_data)
+
+    async def awareness_update(self, event):
+        """Forward awareness updates to clients"""
+        if event['sender_channel'] != self.channel_name:
+            await self.send(text_data=json.dumps(event['data']))
+
+    # Reuse your existing database access methods
+    @database_sync_to_async
+    def get_user(self, user_id):
+        try:
+            return User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return None
+
+    @database_sync_to_async
+    def get_note_with_details(self, note_id):
+        try:
+            note = Note.objects.select_related('owner').get(id=note_id)
+            return {
+                'id': note.id,
+                'title': note.title,
+                'owner_id': note.owner.id,
+                'owner_username': note.owner.username,
+            }
+        except Note.DoesNotExist:
+            return None
+
+    @database_sync_to_async
+    def check_shared_access(self, note_id, user_id):
+        # Reuse your existing access check method
+        try:
+            note = Note.objects.get(id=note_id)
+            
+            if note.shared_with.filter(id=user_id).exists():
+                return True
+            
+            if NoteShare.objects.filter(note_id=note_id, shared_with_id=user_id).exists():
+                return True
+                
+            return False
+        except Note.DoesNotExist:
+            return False
+
+    @database_sync_to_async
+    def add_collaborator(self):
+        # Reuse your existing collaborator creation
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F']
+        color = random.choice(colors)
+        
+        collaborator, created = Collaborator.objects.get_or_create(
+            note_id=self.note_id,
+            user_identifier=self.user_identifier,
+            defaults={
+                'is_active': True,
+                'user_name': self.user.username,
+                'color': color,
+                'user': self.user
+            }
+        )
+        
+        collaborator.is_active = True
+        collaborator.user_name = self.user.username
+        collaborator.user = self.user
+        collaborator.save()
+        
+        return collaborator
+
+    @database_sync_to_async
+    def remove_collaborator(self):
+        try:
+            collaborator = Collaborator.objects.get(
+                note_id=self.note_id,
+                user_identifier=self.user_identifier
+            )
+            collaborator.delete()
+        except Collaborator.DoesNotExist:
+            pass
 
 class NoteConsumer(AsyncWebsocketConsumer):
     async def connect(self):

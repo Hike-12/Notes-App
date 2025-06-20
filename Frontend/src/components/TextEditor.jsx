@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Editor } from '@tinymce/tinymce-react';
-import { useWebSocket } from '../hooks/useWebSocket.jsx';
+import { useYjs } from '../hooks/useYjs.jsx';
 import ShareModal from './ShareModal.jsx';
 
 // Utility functions remain the same...
@@ -36,28 +36,12 @@ export default function TextEditor({ setSidebarOpen }) {
   const [foundNote, setFoundNote] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [collaborators, setCollaborators] = useState([]);
   const [permission, setPermission] = useState('edit');
   const [isOwner, setIsOwner] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   // WebSocket without cursor handling
-  const { isConnected, sendContentChange } = useWebSocket(
-    id,
-    (newContent, userId) => {
-      if (userId !== currentUserId.current && editorRef.current) {
-        isUpdatingFromWS.current = true;
-        editorRef.current.setContent(newContent);
-        setContent(newContent);
-        setTimeout(() => {
-          isUpdatingFromWS.current = false;
-        }, 100);
-      }
-    },
-    (collaboratorsList) => {
-      setCollaborators(collaboratorsList);
-    }
-  );
+  const { isConnected, collaborators } = useYjs(id, editorRef);
 
   // All your existing useEffect code...
   useEffect(() => {
@@ -117,12 +101,7 @@ export default function TextEditor({ setSidebarOpen }) {
       return;
     }
     
-    if (!isUpdatingFromWS.current) {
-      setContent(newContent);
-      if (id && isConnected) {
-        sendContentChange(newContent, currentUserId.current);
-      }
-    }
+    setContent(newContent);
   };
 
   // All your existing handlers remain the same...
@@ -461,31 +440,60 @@ export default function TextEditor({ setSidebarOpen }) {
               automatic_uploads: true,
               file_picker_types: 'image',
               content_style: `
-                body { 
-                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
-                  font-size: 16px; 
-                  line-height: 1.6; 
-                  color: #3B3B1A;
-                  background: transparent;
-                  padding: 20px;
-                  margin: 0;
-                  min-height: 100%;
-                  box-sizing: border-box;
-                  position: relative;
-                }
-                p { margin-bottom: 16px; }
-                h1, h2, h3, h4, h5, h6 { 
-                  color: #8A784E; 
-                  margin: 24px 0 12px 0;
-                  font-weight: 600;
-                }
-                @media (max-width: 768px) {
-                  body {
-                    padding: 12px;
-                    font-size: 16px;
-                  }
-                }
-              `,
+      body { 
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+        font-size: 16px; 
+        line-height: 1.6; 
+        color: #3B3B1A;
+        background: transparent;
+        padding: 20px;
+        margin: 0;
+        min-height: 100%;
+        box-sizing: border-box;
+        position: relative;
+      }
+      p { margin-bottom: 16px; }
+      h1, h2, h3, h4, h5, h6 { 
+        color: #8A784E; 
+        margin: 24px 0 12px 0;
+        font-weight: 600;
+      }
+      
+      /* Cursor styles for Yjs */
+      .remote-caret {
+        position: absolute;
+        border-left: 2px solid black;
+        border-right: 2px solid black;
+        margin-left: -1px;
+        margin-right: -1px;
+        pointer-events: none;
+        z-index: 3;
+      }
+      .remote-caret > div {
+        position: absolute;
+        top: -1.05em;
+        left: -2px;
+        font-size: 0.9em;
+        background-color: rgb(250, 129, 0);
+        font-family: sans-serif;
+        font-style: normal;
+        font-weight: normal;
+        line-height: normal;
+        white-space: nowrap;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 3px;
+        user-select: none;
+        pointer-events: none;
+      }
+      
+      @media (max-width: 768px) {
+        body {
+          padding: 12px;
+          font-size: 16px;
+        }
+      }
+    `,
               mobile: {
                 toolbar_mode: 'sliding',
                 menubar: false,
