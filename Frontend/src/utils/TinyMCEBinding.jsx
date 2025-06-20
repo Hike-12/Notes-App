@@ -1,132 +1,168 @@
-import * as Y from 'yjs';
-
 export class TinyMCEBinding {
   constructor(ytext, editor, awareness) {
     this.ytext = ytext;
     this.editor = editor;
     this.awareness = awareness;
     this.isSyncing = false;
+    this.isInitialized = false;
     
     // Initialize
     this.init();
   }
   
   init() {
-    // Initial content sync
-    this.editor.setContent(this.ytext.toString());
+    // Initial content sync - only if editor is empty
+    if (!this.editor.getContent() && this.ytext.toString()) {
+      this.isSyncing = true;
+      this.editor.setContent(this.ytext.toString());
+      this.isSyncing = false;
+    }
     
-    // Listen for TinyMCE changes
-    this.editor.on('change input', () => {
-      if (!this.isSyncing) {
-        this.isSyncing = true;
+    this.isInitialized = true;
+    
+    // Debounced content update function
+    let updateTimeout;
+    const debouncedUpdate = (content) => {
+      clearTimeout(updateTimeout);
+      updateTimeout = setTimeout(() => {
+        if (!this.isSyncing && this.isInitialized) {
+          this.isSyncing = true;
+          
+          // Only update if content actually changed
+          const currentYText = this.ytext.toString();
+          if (currentYText !== content) {
+            this.ytext.delete(0, this.ytext.length);
+            this.ytext.insert(0, content);
+          }
+          
+          this.updateCursorPosition();
+          this.isSyncing = false;
+        }
+      }, 150); // 150ms debounce
+    };
+    
+    // Listen for TinyMCE changes with debouncing
+    this.editor.on('input', () => {
+      if (!this.isSyncing && this.isInitialized) {
         const content = this.editor.getContent();
-        
-        // Apply changes to Yjs document
-        this.ytext.delete(0, this.ytext.length);
-        this.ytext.insert(0, content);
-        
-        // Update cursor position
-        this.updateCursorPosition();
-        
-        this.isSyncing = false;
+        debouncedUpdate(content);
       }
     });
     
-    // Listen for cursor/selection changes
+    // Listen for cursor/selection changes (less frequent updates)
+    let cursorTimeout;
     this.editor.on('SelectionChange', () => {
-      this.updateCursorPosition();
+      clearTimeout(cursorTimeout);
+      cursorTimeout = setTimeout(() => {
+        if (!this.isSyncing) {
+          this.updateCursorPosition();
+        }
+      }, 300);
     });
     
     // Listen for Yjs changes
     this.ytext.observe(event => {
-      if (!this.isSyncing) {
+      if (!this.isSyncing && this.isInitialized) {
         this.isSyncing = true;
         
-        // Apply Yjs changes to editor
-        this.editor.setContent(this.ytext.toString());
+        const newContent = this.ytext.toString();
+        const currentContent = this.editor.getContent();
+        
+        // Only update if content is different
+        if (newContent !== currentContent) {
+          // Preserve cursor position
+          const bookmark = this.editor.selection.getBookmark(2);
+          this.editor.setContent(newContent);
+          this.editor.selection.moveToBookmark(bookmark);
+        }
         
         this.isSyncing = false;
       }
     });
     
-    // Listen for awareness updates
+    // Listen for awareness updates (less frequent)
+    let awarenessTimeout;
     this.awareness.on('change', () => {
-      this.renderRemoteCursors();
+      clearTimeout(awarenessTimeout);
+      awarenessTimeout = setTimeout(() => {
+        this.renderRemoteCursors();
+      }, 200);
     });
   }
   
   updateCursorPosition() {
-    if (!this.awareness) return;
+    if (!this.awareness || this.isSyncing) return;
     
-    const selection = this.editor.selection;
-    if (!selection) return;
-    
-    // Get cursor position
-    const range = selection.getRng();
-    const cursorInfo = {
-      anchor: range.startOffset,
-      head: range.endOffset,
-      from: { line: 0, ch: range.startOffset },
-      to: { line: 0, ch: range.endOffset }
-    };
-    
-    // Update awareness state
-    this.awareness.setLocalStateField('cursor', cursorInfo);
+    try {
+      const selection = this.editor.selection;
+      if (!selection) return;
+      
+      const range = selection.getRng();
+      const cursorInfo = {
+        anchor: range.startOffset,
+        head: range.endOffset,
+        timestamp: Date.now()
+      };
+      
+      this.awareness.setLocalStateField('cursor', cursorInfo);
+    } catch (error) {
+      console.warn('Cursor update error:', error);
+    }
   }
   
   renderRemoteCursors() {
-    // Remove existing cursors
-    const existingCursors = this.editor.getDoc().querySelectorAll('.remote-caret');
-    existingCursors.forEach(cursor => cursor.remove());
+    if (this.isSyncing) return;
     
-    // Get states from awareness
-    const states = this.awareness.getStates();
-    
-    // Current user ID
-    const currentUser = this.awareness.getLocalState().user.id;
-    
-    // Render each remote cursor
-    states.forEach((state, clientId) => {
-      // Skip if no user data or cursor data
-      if (!state.user || !state.cursor) return;
+    try {
+      // Remove existing cursors
+      const existingCursors = this.editor.getDoc().querySelectorAll('.remote-caret');
+      existingCursors.forEach(cursor => cursor.remove());
       
-      // Skip current user
-      if (state.user.id === currentUser) return;
+      const states = this.awareness.getStates();
+      const currentUser = this.awareness.getLocalState()?.user?.id;
       
-      try {
-        // Create cursor element
+      states.forEach((state, clientId) => {
+        if (!state.user || !state.cursor || state.user.id === currentUser) return;
+        
+        // Skip old cursor positions (older than 5 seconds)
+        if (Date.now() - (state.cursor.timestamp || 0) > 5000) return;
+        
+        // Create and position cursor (simplified positioning)
         const cursorElement = this.editor.getDoc().createElement('div');
         cursorElement.className = 'remote-caret';
-        cursorElement.style.height = '1.2em';
-        cursorElement.style.borderLeft = `2px solid ${state.user.color}`;
-        cursorElement.style.position = 'absolute';
+        cursorElement.style.cssText = `
+          position: absolute;
+          height: 1.2em;
+          border-left: 2px solid ${state.user.color};
+          pointer-events: none;
+          z-index: 1000;
+          left: ${Math.min(state.cursor.anchor * 8, 500)}px;
+          animation: blink 1s infinite;
+        `;
         
-        // Create user label
         const labelElement = this.editor.getDoc().createElement('div');
         labelElement.textContent = state.user.name;
-        labelElement.style.backgroundColor = state.user.color;
-        labelElement.style.color = 'white';
-        labelElement.style.padding = '2px 6px';
-        labelElement.style.borderRadius = '3px';
-        labelElement.style.fontSize = '12px';
+        labelElement.style.cssText = `
+          background-color: ${state.user.color};
+          color: white;
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-size: 11px;
+          white-space: nowrap;
+          margin-top: -20px;
+        `;
         
         cursorElement.appendChild(labelElement);
-        
-        // Position cursor (basic positioning)
-        // This is simplified - real implementation would need better positioning
-        const container = this.editor.getBody();
-        cursorElement.style.left = `${state.cursor.anchor * 8}px`; // Approximate positioning
-        
-        container.appendChild(cursorElement);
-      } catch (error) {
-        console.error('Error rendering remote cursor:', error);
-      }
-    });
+        this.editor.getBody().appendChild(cursorElement);
+      });
+    } catch (error) {
+      console.warn('Cursor rendering error:', error);
+    }
   }
   
   destroy() {
-    // Clean up
-    this.editor.off('change input');
+    this.isInitialized = false;
+    this.editor.off('input');
     this.editor.off('SelectionChange');
     this.awareness.off('change');
     
