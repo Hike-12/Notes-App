@@ -4,6 +4,7 @@ import QuillEditor from './QuillEditor.jsx';
 import { useYjs } from '../hooks/useYjs.jsx';
 import ShareModal from './ShareModal.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import html2pdf from 'html2pdf.js';
 
 // Utility functions for Quill HTML content
 const extractTitle = (htmlContent) => {
@@ -49,6 +50,68 @@ export default function TextEditor({ setSidebarOpen }) {
     id && quillRef.current ? id : null, 
     quillRef
   );
+
+  const handleDownloadPDF = () => {
+  if (!content || !quillRef.current) {
+    alert('No content to download');
+    return;
+  }
+
+  // Get the title for filename
+  const title = extractTitle(content) || 'Untitled Note';
+  const filename = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
+
+  // Get the editor content
+  const editorElement = quillRef.current.root;
+  
+  // Create a clean version for PDF
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = content;
+  
+  // Style the content for PDF
+  tempDiv.style.cssText = `
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #333;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    background: white;
+  `;
+
+  // PDF options
+  const options = {
+    margin: [15, 15, 15, 15],
+    filename: filename,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { 
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff'
+    },
+    jsPDF: { 
+      unit: 'mm', 
+      format: 'a4', 
+      orientation: 'portrait',
+      compress: true
+    }
+  };
+
+  // Generate and download PDF
+  html2pdf()
+    .set(options)
+    .from(tempDiv)
+    .save()
+    .then(() => {
+      console.log('PDF downloaded successfully');
+    })
+    .catch(error => {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Please try again.');
+    });
+};
 
   // Fetch note data
   useEffect(() => {
@@ -344,6 +407,16 @@ export default function TextEditor({ setSidebarOpen }) {
                 {isSaving ? 'Saving...' : 'Save'}
               </button>
             )}
+
+            <button 
+              onClick={handleDownloadPDF}
+              className="bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm transition-colors flex items-center space-x-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>PDF</span>
+            </button>
             
             {!isNewNote && isOwner && (
               <button 
@@ -391,6 +464,19 @@ export default function TextEditor({ setSidebarOpen }) {
                   {isSaving ? 'Saving...' : 'Save Note'}
                 </button>
               )}
+
+              <button 
+                onClick={() => {
+                  handleDownloadPDF();
+                  setShowMobileMenu(false);
+                }}
+                className="w-full bg-green-500 hover:bg-green-600 text-white py-2 px-3 rounded-lg text-sm transition-colors flex items-center justify-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>Download PDF</span>
+              </button>
               
               {!isNewNote && isOwner && (
                 <button 
