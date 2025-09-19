@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "autoprefixer": "^10.4.20",
-    "html2pdf.js": "^0.10.3",
+    "html2pdf.js": "^0.11.2",
     "jspdf": "^3.0.1",
     "postcss": "^8.4.47",
     "quill": "^2.0.3",
